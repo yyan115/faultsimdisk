@@ -9,11 +9,13 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 
 jobs:
-  runtime-smoke:
+  runtime-validation:
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -33,33 +35,54 @@ jobs:
             echo "architecture=$(uname -m)"
           } | tee runtime-environment.txt
 
-      - name: Install running-kernel headers
+      - name: Install integration dependencies
         shell: bash
         run: |
           sudo apt-get update
           if ! test -e "/lib/modules/$(uname -r)/build"; then
             sudo apt-get install -y "linux-headers-$(uname -r)"
           fi
+          sudo apt-get install -y fio sqlite3 python3 e2fsprogs postgresql postgresql-client
+          {
+            fio --version
+            sqlite3 --version
+            psql --version
+            gcc --version | head -n 1
+          } | tee -a runtime-environment.txt
 
       - name: Build for runner kernel
         run: make
 
-      - name: Load and exercise block device
+      - name: Run full validation
         shell: bash
         run: |
-          sudo insmod ./faultsimdisk.ko size_mb=64
           cleanup() { sudo rmmod faultsimdisk 2>/dev/null || true; }
           trap cleanup EXIT
-          test -b /dev/faultsim0
-          lsblk /dev/faultsim0 | tee -a runtime-environment.txt
-          sudo ./scripts/smoke-test.sh
-          sudo rmmod faultsimdisk
+          ./scripts/dev.sh load 256
+          ./scripts/dev.sh validate 2>&1 | tee validation-output.txt
+          ./scripts/dev.sh unload
           trap - EXIT
 
+      - name: Package runtime evidence
+        shell: bash
+        run: |
+          sha256sum runtime-environment.txt validation-output.txt | tee evidence.sha256
+          tar -czf runtime-evidence.tar.gz runtime-environment.txt validation-output.txt evidence.sha256
+
       - name: Upload runtime evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runtime-integration-evidence
-          path: runtime-environment.txt
+          path: |
+            runtime-environment.txt
+            validation-output.txt
+            evidence.sha256
+            runtime-evidence.tar.gz
           if-no-files-found: error
           retention-days: 30
+
+      - name: Attest runtime evidence when public
+        if: github.event.repository.private == false
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: runtime-evidence.tar.gz
