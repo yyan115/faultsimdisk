@@ -245,7 +245,6 @@ def main():
     md = markdown_report(data)
     (out / "latest.md").write_text(md, encoding="utf-8")
     (out / "README.md").write_text(md, encoding="utf-8")
-    (out / "index.html").write_text(html_report(data), encoding="utf-8")
     (out / "latest.svg").write_text(svg_report(data), encoding="utf-8")
 
     if os.getenv("GITHUB_STEP_SUMMARY"):
