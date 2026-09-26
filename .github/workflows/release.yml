@@ -7,11 +7,13 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -25,6 +27,71 @@ jobs:
           version=$(tr -d '[:space:]' < VERSION)
           test "$GITHUB_REF_NAME" = "v$version"
 
+      - name: Capture release environment
+        shell: bash
+        run: |
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "image_os=${ImageOS:-unknown}"
+            echo "image_version=${ImageVersion:-unknown}"
+            echo "kernel=$(uname -r)"
+            echo "architecture=$(uname -m)"
+          } | tee runtime-environment.txt
+
+      - name: Install validation dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          if ! test -e "/lib/modules/$(uname -r)/build"; then
+            sudo apt-get install -y "linux-headers-$(uname -r)"
+          fi
+          sudo apt-get install -y fio sqlite3 python3 e2fsprogs postgresql postgresql-client
+          {
+            echo "fio_version=$(fio --version)"
+            echo "sqlite_version=$(sqlite3 --version | awk '{print $1}')"
+            echo "postgres_version=$(psql --version | sed 's/^psql (PostgreSQL) //')"
+            echo "gcc_version=$(gcc -dumpfullversion)"
+          } | tee -a runtime-environment.txt
+
+      - name: Build module
+        run: make
+
+      - name: Run release validation
+        shell: bash
+        run: |
+          cleanup() { sudo rmmod faultsimdisk 2>/dev/null || true; }
+          trap cleanup EXIT
+          ./scripts/dev.sh load 256
+          ./scripts/dev.sh validate 2>&1 | tee validation-output.txt
+          ./scripts/dev.sh unload
+          trap - EXIT
+
+      - name: Render release verification report
+        shell: bash
+        run: |
+          python3 scripts/render-results.py \
+            --environment runtime-environment.txt \
+            --validation validation-output.txt \
+            --output-dir verification
+
+      - name: Package validation evidence
+        shell: bash
+        run: |
+          sha256sum \
+            runtime-environment.txt \
+            validation-output.txt \
+            verification/latest.json \
+            verification/latest.md \
+            verification/latest.svg | tee evidence.sha256
+          tar -czf runtime-evidence.tar.gz \
+            runtime-environment.txt \
+            validation-output.txt \
+            evidence.sha256 \
+            verification/latest.json \
+            verification/latest.md \
+            verification/latest.svg
+
       - name: Build source release
         shell: bash
         run: |
@@ -36,14 +103,36 @@ jobs:
           tar -C dist -czf "dist/$dir.tar.gz" "$dir"
           sha256sum "dist/$dir.tar.gz" > "dist/$dir.tar.gz.sha256"
 
+      - name: Attest release evidence
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: runtime-evidence.tar.gz
+
+      - name: Attest source archive
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist/*.tar.gz
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           version=$(tr -d '[:space:]' < VERSION)
+          {
+            cat verification/latest.md
+            echo
+            echo "## Release notes"
+            echo
+            echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for the version history."
+          } > release-notes.md
           gh release create "$GITHUB_REF_NAME" \
             "dist/faultsimdisk-$version.tar.gz" \
             "dist/faultsimdisk-$version.tar.gz.sha256" \
+            runtime-evidence.tar.gz \
+            evidence.sha256 \
+            verification/latest.json \
+            verification/latest.md \
+            --verify-tag \
             --title "Fault Simulation Disk $GITHUB_REF_NAME" \
-            --generate-notes
+            --notes-file release-notes.md
