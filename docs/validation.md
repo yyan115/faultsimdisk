@@ -5,7 +5,8 @@ All destructive tests target only `/dev/faultsim0`. Run them inside a disposable
 ## Full validation
 
 ```bash
-sudo apt install fio sqlite3 python3 e2fsprogs
+sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client
+./scripts/dev.sh load 256
 ./scripts/dev.sh validate
 ```
 
@@ -16,10 +17,13 @@ The suite performs:
 3. **Statistics test**: confirms request, byte, failure, and delayed-I/O counters increase.
 4. **fio benchmark**: compares 4 KiB single-depth random reads at baseline and with 20 ms injected latency.
 5. **SQLite scenario**: runs full-synchronous transactions on ext4 backed by Fault Simulation Disk, measures injected latency, then confirms a 100% write-failure policy surfaces as an application error.
+6. **PostgreSQL scenario**: initializes a disposable PostgreSQL cluster directly on Fault Simulation Disk with `fsync=on` and `synchronous_commit=on`, measures durable commit latency, then injects block write failure and records the server/client-visible error.
 
 The suite resets fault settings after each scenario.
 
 ## Application-level failure propagation
+
+SQLite and PostgreSQL both depend on the filesystem and block device beneath their database files. PostgreSQL is tested with durability settings enabled so commits wait for WAL flushes rather than using non-durable shortcuts.
 
 SQLite depends on the filesystem and block device beneath its database file. When Fault Simulation Disk completes writes with I/O errors, the failure propagates through the Linux storage stack to SQLite, allowing the application-visible behavior to be tested without failing physical storage.
 

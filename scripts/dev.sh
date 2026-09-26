@@ -45,7 +45,11 @@ case "${1:-}" in
 		require_vm
 		test -f faultsimdisk.ko || { echo "Build first with: make" >&2; exit 1; }
 		test ! -d /sys/module/faultsimdisk || { echo "faultsimdisk is already loaded." >&2; exit 1; }
-		sudo insmod ./faultsimdisk.ko
+		if test -n "${2:-}"; then
+			sudo insmod ./faultsimdisk.ko size_mb="$2"
+		else
+			sudo insmod ./faultsimdisk.ko
+		fi
 		for _ in $(seq 1 20); do
 			test -b /dev/faultsim0 && break
 			sleep 0.1
@@ -112,13 +116,17 @@ case "${1:-}" in
 		require_vm
 		sudo "$ROOT/scripts/sqlite-test.sh"
 		;;
+	postgres-test)
+		require_vm
+		sudo "$ROOT/scripts/postgres-test.sh"
+		;;
 	validate)
 		require_vm
 		require_loaded
 		"$ROOT/scripts/final-validate.sh"
 		;;
 	*)
-		echo "Usage: $0 {load|unload|status|config|set|stats|logs|smoke|fault-test|stats-test|fio-test|sqlite-test|validate}" >&2
+		echo "Usage: $0 {load [size_mb]|unload|status|config|set|stats|logs|smoke|fault-test|stats-test|fio-test|sqlite-test|postgres-test|validate}" >&2
 		exit 2
 		;;
 esac
