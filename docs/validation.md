@@ -22,3 +22,26 @@ The suite resets fault settings after each scenario.
 ## Application-level failure propagation
 
 SQLite depends on the filesystem and block device beneath its database file. When Fault Simulation Disk completes writes with I/O errors, the failure propagates through the Linux storage stack to SQLite, allowing the application-visible behavior to be tested without failing physical storage.
+
+
+## Recorded validation run
+
+Environment:
+
+- Ubuntu 26.04 LTS
+- Linux 7.0.0-34-generic
+- fio 3.41
+- SQLite 3.46.1
+- 64 MiB Fault Simulation Disk
+
+Observed results:
+
+- ext4 format, mount, synchronized write, readback, and unmount completed successfully;
+- configured 100 ms raw-read latency measured 113 ms end to end;
+- 100% read and write failure policies rejected their corresponding raw I/O operations;
+- 4 KiB QD1 random-read performance measured 518,012.5 IOPS at baseline and 47.5 IOPS with 20 ms injected latency;
+- a full-synchronous SQLite transaction measured 6 ms at baseline and 262 ms with 50 ms injected storage latency;
+- a 100% write-failure policy propagated through ext4 to SQLite as `disk I/O error (10)`;
+- the final statistics snapshot recorded 1,036,953 read requests, 225 write requests, 1 failed read, 3 failed writes, and 109 delayed requests.
+
+These values are a validation snapshot from one VM run, not hardware performance guarantees.

@@ -53,4 +53,8 @@ make
 
 Configuration lives under `/sys/module/faultsimdisk/parameters/`; statistics are exposed through `/sys/kernel/debug/faultsimdisk/stats`.
 
+## Validation snapshot
+
+On Ubuntu 26.04 with Linux 7.0.0-34, a 4 KiB QD1 random-read test measured **518k IOPS baseline vs 47.5 IOPS with 20 ms injected latency**. A SQLite full-synchronous transaction increased from **6 ms to 262 ms** with 50 ms storage latency, and a 100% write-failure policy surfaced as a SQLite disk I/O error.
+
 See [design notes](docs/design.md) and [validation scenarios](docs/validation.md) for details.
