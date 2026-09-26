@@ -16,7 +16,7 @@ Absolute baseline IOPS are not treated as portable performance claims because CP
 
 ## Independent hosted execution
 
-The `Runtime Integration` GitHub Actions workflow runs on a fresh GitHub-hosted Ubuntu VM. It:
+The privileged `Runtime Integration` workflow runs on trusted `main` pushes or manual dispatches using a fresh GitHub-hosted Ubuntu VM. Pull requests use the read-only build/DKMS CI and receive full runtime validation after merge. The runtime workflow:
 
 1. captures the commit, runner image, kernel, architecture, compiler, and test-tool versions;
 2. builds the module against the runner's own kernel;

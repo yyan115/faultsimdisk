@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No unreleased changes.
+### Changed
+
+- Restrict privileged runtime integration to trusted `main` pushes and manual dispatches; pull requests continue to use read-only build and DKMS CI.
+- Restore the release workflow to tag-only publication after the initial automated release bootstrap.
+- Clarify DKMS installation prerequisites.
 
 ## 1.0.1 - 2026-09-26
 

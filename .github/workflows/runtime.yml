@@ -11,14 +11,6 @@ on:
       - VERSION
       - scripts/**
       - .github/workflows/runtime.yml
-  pull_request:
-    paths:
-      - faultsimdisk.c
-      - Makefile
-      - dkms.conf
-      - VERSION
-      - scripts/**
-      - .github/workflows/runtime.yml
   workflow_dispatch:
 
 permissions:

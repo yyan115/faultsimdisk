@@ -72,7 +72,7 @@ See [design notes](docs/design.md), [validation scenarios](docs/validation.md), 
 For normal development, build against the running kernel with `make`. For persistent installation across kernel updates, DKMS support is included:
 
 ```bash
-sudo apt install dkms
+sudo apt install dkms build-essential "linux-headers-$(uname -r)"
 sudo ./scripts/install-dkms.sh
 ```
 
