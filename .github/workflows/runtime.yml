@@ -1,0 +1,65 @@
+name: Runtime Integration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Capture runner environment
+        shell: bash
+        run: |
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "image_os=${ImageOS:-unknown}"
+            echo "image_version=${ImageVersion:-unknown}"
+            echo "kernel=$(uname -r)"
+            echo "architecture=$(uname -m)"
+          } | tee runtime-environment.txt
+
+      - name: Install running-kernel headers
+        shell: bash
+        run: |
+          sudo apt-get update
+          if ! test -e "/lib/modules/$(uname -r)/build"; then
+            sudo apt-get install -y "linux-headers-$(uname -r)"
+          fi
+
+      - name: Build for runner kernel
+        run: make
+
+      - name: Load and exercise block device
+        shell: bash
+        run: |
+          sudo insmod ./faultsimdisk.ko size_mb=64
+          cleanup() { sudo rmmod faultsimdisk 2>/dev/null || true; }
+          trap cleanup EXIT
+          test -b /dev/faultsim0
+          lsblk /dev/faultsim0 | tee -a runtime-environment.txt
+          sudo ./scripts/smoke-test.sh
+          sudo rmmod faultsimdisk
+          trap - EXIT
+
+      - name: Upload runtime evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runtime-integration-evidence
+          path: runtime-environment.txt
+          if-no-files-found: error
+          retention-days: 30
