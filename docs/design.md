@@ -42,6 +42,16 @@ Configuration is exposed through writable module parameters:
 
 The parameters are validated in-kernel: latency is limited to 0-5000 ms and percentages to 0-100.
 
+### Observability
+
+The driver maintains lock-free atomic counters for submitted reads and writes, successful bytes transferred, failed read/write requests, and delayed requests. A read-only debugfs view exposes these counters at:
+
+```text
+/sys/kernel/debug/faultsimdisk/stats
+```
+
+Configuration remains in module parameters under sysfs, while diagnostic statistics live in debugfs.
+
 ### Backing store
 
 A spinlock protects concurrent access to the in-memory backing store. Flush completes immediately because there is no volatile hardware cache. Discard and write-zeroes requests clear the corresponding memory range.

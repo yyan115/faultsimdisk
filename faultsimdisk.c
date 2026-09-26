@@ -9,12 +9,14 @@
 
 #include <linux/bio.h>
 #include <linux/blkdev.h>
+#include <linux/debugfs.h>
 #include <linux/highmem.h>
 #include <linux/init.h>
 #include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/random.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/version.h>
@@ -29,6 +31,16 @@
 #define FSD_MAX_SIZE_MB 1024UL
 #define FSD_MAX_LATENCY_MS 5000U
 
+struct fsd_stats {
+	atomic64_t read_requests;
+	atomic64_t write_requests;
+	atomic64_t read_bytes;
+	atomic64_t write_bytes;
+	atomic64_t failed_reads;
+	atomic64_t failed_writes;
+	atomic64_t delayed_requests;
+};
+
 struct fsd_device {
 	int major;
 	struct gendisk *disk;
@@ -36,6 +48,8 @@ struct fsd_device {
 	size_t capacity_bytes;
 	spinlock_t data_lock;
 	struct workqueue_struct *io_wq;
+	struct dentry *debugfs_dir;
+	struct fsd_stats stats;
 };
 
 struct fsd_io_work {
@@ -103,6 +117,94 @@ MODULE_PARM_DESC(read_fail_pct, "Percentage of read requests completed with I/O 
 module_param_cb(write_fail_pct, &fsd_percent_ops, &write_fail_pct, 0644);
 MODULE_PARM_DESC(write_fail_pct, "Percentage of write requests completed with I/O error (0-100)");
 
+static void fsd_account_submit(const struct bio *bio)
+{
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		atomic64_inc(&fsd.stats.read_requests);
+		break;
+	case REQ_OP_WRITE:
+		atomic64_inc(&fsd.stats.write_requests);
+		break;
+	default:
+		break;
+	}
+}
+
+static void fsd_account_failure(const struct bio *bio)
+{
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		atomic64_inc(&fsd.stats.failed_reads);
+		break;
+	case REQ_OP_WRITE:
+		atomic64_inc(&fsd.stats.failed_writes);
+		break;
+	default:
+		break;
+	}
+}
+
+static void fsd_account_success(const struct bio *bio)
+{
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		atomic64_add(bio->bi_iter.bi_size, &fsd.stats.read_bytes);
+		break;
+	case REQ_OP_WRITE:
+		atomic64_add(bio->bi_iter.bi_size, &fsd.stats.write_bytes);
+		break;
+	default:
+		break;
+	}
+}
+
+static int fsd_stats_show(struct seq_file *m, void *unused)
+{
+	(void)unused;
+
+	seq_printf(m, "read_requests %lld\n",
+		   (long long)atomic64_read(&fsd.stats.read_requests));
+	seq_printf(m, "write_requests %lld\n",
+		   (long long)atomic64_read(&fsd.stats.write_requests));
+	seq_printf(m, "read_bytes %lld\n",
+		   (long long)atomic64_read(&fsd.stats.read_bytes));
+	seq_printf(m, "write_bytes %lld\n",
+		   (long long)atomic64_read(&fsd.stats.write_bytes));
+	seq_printf(m, "failed_reads %lld\n",
+		   (long long)atomic64_read(&fsd.stats.failed_reads));
+	seq_printf(m, "failed_writes %lld\n",
+		   (long long)atomic64_read(&fsd.stats.failed_writes));
+	seq_printf(m, "delayed_requests %lld\n",
+		   (long long)atomic64_read(&fsd.stats.delayed_requests));
+	seq_printf(m, "latency_ms %u\n", READ_ONCE(latency_ms));
+	seq_printf(m, "read_fail_pct %u\n", READ_ONCE(read_fail_pct));
+	seq_printf(m, "write_fail_pct %u\n", READ_ONCE(write_fail_pct));
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(fsd_stats);
+
+static void fsd_debugfs_init(void)
+{
+	struct dentry *stats_file;
+
+	fsd.debugfs_dir = debugfs_create_dir(FSD_DRIVER_NAME, NULL);
+	if (IS_ERR(fsd.debugfs_dir)) {
+		pr_warn("debugfs unavailable; runtime stats disabled\n");
+		fsd.debugfs_dir = NULL;
+		return;
+	}
+
+	stats_file = debugfs_create_file("stats", 0444, fsd.debugfs_dir,
+					 NULL, &fsd_stats_fops);
+	if (IS_ERR(stats_file)) {
+		debugfs_remove_recursive(fsd.debugfs_dir);
+		fsd.debugfs_dir = NULL;
+		pr_warn("failed to create debugfs stats file\n");
+	}
+}
+
 static bool fsd_bio_in_bounds(const struct bio *bio)
 {
 	u64 offset = (u64)bio->bi_iter.bi_sector << SECTOR_SHIFT;
@@ -165,6 +267,7 @@ static bool fsd_should_fail(const struct bio *bio)
 static void fsd_complete_bio(struct bio *bio, bool fail)
 {
 	if (fail) {
+		fsd_account_failure(bio);
 		bio->bi_status = BLK_STS_IOERR;
 		bio_endio(bio);
 		return;
@@ -190,6 +293,7 @@ static void fsd_complete_bio(struct bio *bio, bool fail)
 		return;
 	}
 
+	fsd_account_success(bio);
 	bio_endio(bio);
 }
 
@@ -207,7 +311,10 @@ static void fsd_submit_bio(struct bio *bio)
 	struct fsd_io_work *io;
 	unsigned int delay_ms;
 
+	fsd_account_submit(bio);
+
 	if (!fsd_bio_in_bounds(bio)) {
+		fsd_account_failure(bio);
 		bio_io_error(bio);
 		return;
 	}
@@ -220,6 +327,7 @@ static void fsd_submit_bio(struct bio *bio)
 
 	io = kmalloc(sizeof(*io), GFP_ATOMIC);
 	if (!io) {
+		fsd_account_failure(bio);
 		bio_io_error(bio);
 		return;
 	}
@@ -227,7 +335,16 @@ static void fsd_submit_bio(struct bio *bio)
 	io->bio = bio;
 	io->fail = fsd_should_fail(bio);
 	INIT_DELAYED_WORK(&io->work, fsd_io_workfn);
-	queue_delayed_work(fsd.io_wq, &io->work, msecs_to_jiffies(delay_ms));
+
+	if (!queue_delayed_work(fsd.io_wq, &io->work,
+				msecs_to_jiffies(delay_ms))) {
+		kfree(io);
+		fsd_account_failure(bio);
+		bio_io_error(bio);
+		return;
+	}
+
+	atomic64_inc(&fsd.stats.delayed_requests);
 }
 
 static const struct block_device_operations fsd_fops = {
@@ -304,6 +421,8 @@ static int __init fsd_init(void)
 	if (ret)
 		goto err_put_disk;
 
+	fsd_debugfs_init();
+
 	pr_info("registered /dev/%s (%lu MiB)\n", FSD_DISK_NAME, size_mb);
 	return 0;
 
@@ -321,6 +440,7 @@ err_free_data:
 
 static void __exit fsd_exit(void)
 {
+	debugfs_remove_recursive(fsd.debugfs_dir);
 	del_gendisk(fsd.disk);
 	flush_workqueue(fsd.io_wq);
 	destroy_workqueue(fsd.io_wq);

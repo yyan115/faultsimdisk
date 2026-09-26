@@ -28,6 +28,18 @@ show_config() {
 	done
 }
 
+ensure_debugfs() {
+	if ! mountpoint -q /sys/kernel/debug; then
+		sudo mount -t debugfs debugfs /sys/kernel/debug
+	fi
+}
+
+show_stats() {
+	require_loaded
+	ensure_debugfs
+	sudo cat /sys/kernel/debug/faultsimdisk/stats
+}
+
 case "${1:-}" in
 	load)
 		require_vm
@@ -74,6 +86,9 @@ case "${1:-}" in
 		printf '%s\n' "$value" | sudo tee "/sys/module/faultsimdisk/parameters/$name" >/dev/null
 		printf '%s=%s\n' "$name" "$(cat "/sys/module/faultsimdisk/parameters/$name")"
 		;;
+	stats)
+		show_stats
+		;;
 	logs)
 		sudo dmesg --color=never | grep -E 'faultsimdisk|faultsim0' | tail -n 30
 		;;
@@ -85,8 +100,12 @@ case "${1:-}" in
 		require_vm
 		sudo "$ROOT/scripts/fault-test.sh"
 		;;
+	stats-test)
+		require_vm
+		sudo "$ROOT/scripts/stats-test.sh"
+		;;
 	*)
-		echo "Usage: $0 {load|unload|status|config|set|logs|smoke|fault-test}" >&2
+		echo "Usage: $0 {load|unload|status|config|set|stats|logs|smoke|fault-test|stats-test}" >&2
 		exit 2
 		;;
 esac

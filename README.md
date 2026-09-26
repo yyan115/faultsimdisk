@@ -14,6 +14,7 @@ Linux block layer
 FaultSimDisk
    ├─ latency injection
    ├─ read/write failure injection
+   ├─ I/O statistics
    └─ in-memory backing store
 ```
 
@@ -26,10 +27,12 @@ make
 ./scripts/dev.sh load
 ./scripts/dev.sh smoke
 ./scripts/dev.sh fault-test
+./scripts/dev.sh stats-test
+./scripts/dev.sh stats
 ./scripts/dev.sh unload
 ```
 
-## Runtime fault controls
+## Runtime controls
 
 ```bash
 ./scripts/dev.sh set latency_ms 100
@@ -38,7 +41,13 @@ make
 ./scripts/dev.sh config
 ```
 
-Settings affect new I/O requests and can be changed while the module is loaded. Latency is bounded to 0-5000 ms; failure rates are 0-100%.
+## Runtime statistics
+
+```bash
+./scripts/dev.sh stats
+```
+
+The debugfs stats view reports read/write requests and bytes, failed reads/writes, delayed requests, and the active fault configuration.
 
 ## Roadmap
 
@@ -46,7 +55,7 @@ Settings affect new I/O requests and can be changed while the module is loaded. 
 - [x] Read/write path and in-memory backing store
 - [x] Configurable latency injection
 - [x] Configurable read/write failure injection
-- [ ] Runtime statistics and observability
+- [x] Runtime statistics and observability
 - [ ] `fio` and application resilience scenarios
 
 See [design notes](docs/design.md) for the architecture.
