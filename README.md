@@ -2,38 +2,61 @@
 
 [![CI](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml) [![Runtime Integration](https://github.com/yyan115/faultsimdisk/actions/workflows/runtime.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/runtime.yml)
 
-A Linux kernel block-device simulator for reproducible storage fault testing.
+**Make a Linux block device deliberately slow or unreliable, then observe how real filesystems and databases react.**
 
-[![Latest verified run](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.svg)](https://github.com/yyan115/faultsimdisk/tree/validation-results)
+Fault Simulation Disk is a Linux kernel module that exposes `/dev/faultsim0` as a normal block device. Instead of damaging hardware or waiting for a real disk to fail, you can inject controlled storage faults at runtime and test the software above it.
 
-[Latest verified report](https://github.com/yyan115/faultsimdisk/tree/validation-results) · [Machine-readable JSON](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.json) · [Raw hosted output](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/raw/validation-output.txt)
+## What can it simulate?
 
-Fault Simulation Disk exposes `/dev/faultsim0` as a normal block device and can inject storage latency or read/write failures at runtime.
+There are exactly three runtime fault controls:
+
+| Control | Range | What it does |
+| --- | ---: | --- |
+| `latency_ms` | 0–5000 ms | Delays completion of every block I/O request |
+| `read_fail_pct` | 0–100% | Completes the configured percentage of reads with an I/O error |
+| `write_fail_pct` | 0–100% | Completes the configured percentage of writes with an I/O error |
+
+The controls can be changed while the device is running, so a workload can start normally and then experience a slow or failing disk without restarting the application.
+
+## What is being tested?
+
+The applications are real. **The disk underneath them is the part being simulated.**
 
 ```text
-application / filesystem
-        ↓
-Linux block layer
-        ↓
-/dev/faultsim0
-        ↓
-FaultSimDisk
-   ├─ configurable latency
-   ├─ configurable I/O failures
-   ├─ runtime statistics
-   └─ in-memory backing store
+fio / SQLite / PostgreSQL
+           ↓
+          ext4
+           ↓
+    Linux block layer
+           ↓
+     /dev/faultsim0
+           ↓
+      FaultSimDisk
+     ┌─────┼───────────┐
+     ↓     ↓           ↓
+  latency  read I/O   write I/O
+  delay    errors     errors
 ```
 
-## Features
+This lets the validation answer concrete questions:
 
-- Functional Linux block device that can be formatted and mounted with ext4
-- Runtime-configurable latency from 0 to 5000 ms
-- Independent read and write failure rates from 0 to 100%
-- Deferred I/O completion through a dedicated workqueue
-- Atomic request, byte, failure, and delayed-I/O counters through debugfs
-- Automated raw-I/O, `fio`, filesystem, SQLite, and PostgreSQL validation scenarios
+- Can a normal filesystem format, mount, write, sync, and read back through the simulated disk?
+- Does injected block latency actually propagate into raw I/O, `fio`, SQLite transactions, and durable PostgreSQL commits?
+- Does a forced read failure reach userspace as a real I/O failure?
+- Does a forced write failure propagate through ext4 into SQLite and PostgreSQL instead of being hidden?
+- Does the kernel module correctly account for requests, bytes, failures, and delayed I/O?
 
-## Build and validate
+## Live hosted demonstration
+
+**The card below is not hand-written benchmark data.** GitHub Actions builds and loads the kernel module on a fresh hosted VM, runs the complete validation suite, parses the raw output, and regenerates this card automatically.
+
+[![Live Fault Simulation Disk validation](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.svg)](https://github.com/yyan115/faultsimdisk/tree/validation-results)
+
+[Generated report](https://github.com/yyan115/faultsimdisk/tree/validation-results) · [Machine-readable JSON](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.json) · [Raw validation output](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/raw/validation-output.txt) · [Reproducibility model](docs/reproducibility.md)
+
+The hosted suite exercises all three fault controls against raw block I/O and then runs `fio`, SQLite, and PostgreSQL above ext4 on `/dev/faultsim0`. PostgreSQL is configured with `fsync=on` and `synchronous_commit=on` so the test observes real durable-write behavior.
+
+## Run it
 
 Use a disposable Linux VM.
 
@@ -46,7 +69,7 @@ make
 ./scripts/dev.sh unload
 ```
 
-## Runtime controls
+To inject faults manually:
 
 ```bash
 ./scripts/dev.sh set latency_ms 100
@@ -57,23 +80,26 @@ make
 ./scripts/dev.sh stats
 ```
 
-Configuration lives under `/sys/module/faultsimdisk/parameters/`; statistics are exposed through `/sys/kernel/debug/faultsimdisk/stats`.
+Configuration lives under `/sys/module/faultsimdisk/parameters/`. Runtime counters are exposed through `/sys/kernel/debug/faultsimdisk/stats`.
 
-## Validation
+## Implementation
 
-The primary validation runs on a fresh GitHub-hosted Ubuntu VM and checks behavior rather than requiring one machine-specific performance number. The workflow builds and loads the kernel module, exercises ext4, latency and error injection, runtime statistics, `fio`, SQLite, and a disposable PostgreSQL cluster with `fsync` and synchronous commit enabled. It publishes the latest report, raw output, environment metadata, JSON results, hashes, and an attested evidence archive automatically.
+- Registers a functional Linux block device that can be formatted and mounted with ext4.
+- Uses an in-memory backing store so experiments are disposable.
+- Completes delayed I/O asynchronously through a dedicated workqueue rather than sleeping in `submit_bio`.
+- Injects independent probabilistic read and write errors as `BLK_STS_IOERR`.
+- Supports FLUSH, DISCARD, and WRITE_ZEROES semantics appropriate for the in-memory device.
+- Tracks read/write requests, transferred bytes, failures, and delayed requests through atomic counters.
+- Includes kernel API compatibility around the `blk_alloc_disk()` change after Linux 6.8.
+- Includes DKMS packaging, hosted runtime validation, raw evidence, hashes, and GitHub artifact attestations.
 
-Local Linux 7.0 results are retained in the detailed validation notes as compatibility evidence, not as portable performance claims.
+## DKMS installation
 
-See [design notes](docs/design.md), [validation scenarios](docs/validation.md), [reproducibility and evidence](docs/reproducibility.md), and [contributing guidelines](CONTRIBUTING.md) for details.
-
-## Installation
-
-For normal development, build against the running kernel with `make`. For persistent installation across kernel updates, DKMS support is included:
+For persistent installation across kernel updates:
 
 ```bash
 sudo apt install dkms build-essential "linux-headers-$(uname -r)"
 sudo ./scripts/install-dkms.sh
 ```
 
-Tagged `v*` releases rerun the full hosted validation and automatically publish a source archive, checksum, exact verification report, machine-readable results, raw evidence archive, and GitHub artifact attestations.
+See [design notes](docs/design.md), [validation scenarios](docs/validation.md), [reproducibility and evidence](docs/reproducibility.md), and [contributing guidelines](CONTRIBUTING.md) for details.

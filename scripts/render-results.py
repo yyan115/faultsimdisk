@@ -31,26 +31,38 @@ def capture(pattern, text, cast=str, default=None):
 
 
 def parse_validation(text):
+    has = lambda marker: marker in text
     return {
+        "ext4_pass": has("PASS: formatted, mounted, wrote, synced, and read back through /dev/faultsim0"),
         "raw_latency_configured_ms": capture(r"PASS: (\d+) ms configured latency", text, int),
         "raw_latency_observed_ms": capture(r"configured latency produced (\d+) ms raw-read latency", text, int),
+        "raw_write_failure_pass": has("PASS: write_fail_pct=100 rejected a raw write"),
+        "raw_read_failure_pass": has("PASS: read_fail_pct=100 rejected a raw read"),
+        "stats_pass": has("PASS: runtime statistics checks completed"),
         "fio_baseline_iops": capture(r"fio baseline randread IOPS: ([0-9.]+)", text, float),
         "fio_injected_latency_ms": capture(r"fio with (\d+) ms injected latency", text, int),
         "fio_injected_iops": capture(r"fio with \d+ ms injected latency: ([0-9.]+) IOPS", text, float),
+        "fio_pass": has("PASS: fio measured the expected performance impact from injected latency"),
         "sqlite_baseline_ms": capture(r"SQLite baseline transaction: (\d+) ms", text, int),
         "sqlite_injected_latency_ms": capture(r"SQLite transaction with (\d+) ms I/O latency", text, int),
         "sqlite_injected_ms": capture(r"SQLite transaction with \d+ ms I/O latency: (\d+) ms", text, int),
+        "sqlite_latency_pass": has("PASS: SQLite transaction slowed under injected storage latency"),
         "sqlite_failure": capture(r"SQLite observed injected storage failure: (.+)", text),
+        "sqlite_failure_pass": has("PASS: SQLite surfaced the injected block-device write failure"),
         "postgres_baseline_ms": capture(r"PostgreSQL baseline durable transaction: (\d+) ms", text, int),
         "postgres_injected_latency_ms": capture(r"PostgreSQL transaction with (\d+) ms I/O latency", text, int),
         "postgres_injected_ms": capture(r"PostgreSQL transaction with \d+ ms I/O latency: (\d+) ms", text, int),
+        "postgres_latency_pass": has("PASS: PostgreSQL durable commit slowed under injected storage latency"),
         "postgres_failure": capture(r"PostgreSQL observed injected storage failure: (.+)", text),
+        "postgres_failure_pass": has("PASS: PostgreSQL surfaced the injected block-device write failure"),
         "read_requests": capture(r"^read_requests (\d+)$", text, int),
         "write_requests": capture(r"^write_requests (\d+)$", text, int),
+        "read_bytes": capture(r"^read_bytes (\d+)$", text, int),
+        "write_bytes": capture(r"^write_bytes (\d+)$", text, int),
         "failed_reads": capture(r"^failed_reads (\d+)$", text, int),
         "failed_writes": capture(r"^failed_writes (\d+)$", text, int),
         "delayed_requests": capture(r"^delayed_requests (\d+)$", text, int),
-        "final_pass": "PASS: Fault Simulation Disk final validation completed" in text,
+        "final_pass": has("PASS: Fault Simulation Disk final validation completed"),
     }
 
 
@@ -60,6 +72,23 @@ def fmt_num(value):
     if isinstance(value, float):
         return f"{value:,.1f}"
     return f"{value:,}"
+
+
+def pass_text(value):
+    return "PASS" if value else "FAIL"
+
+
+def compact_failure(value, limit=82):
+    if not value:
+        return "n/a"
+    value = re.sub(r"\s+", " ", value.strip())
+    if len(value) <= limit:
+        return value
+    if "Input/output error" in value:
+        prefix = value.split("Input/output error", 1)[0]
+        prefix = prefix[: max(0, limit - len("… Input/output error"))].rstrip()
+        return f"{prefix}… Input/output error"
+    return value[: limit - 1].rstrip() + "…"
 
 
 def markdown_report(data):
@@ -72,59 +101,143 @@ def markdown_report(data):
     status = "PASS" if data["status"] == "passed" else "FAIL"
 
     lines = [
-        "# Latest verified run",
+        "# Latest verified Fault Simulation Disk run",
         "",
-        f"**Status:** {status}",
+        f"**Overall status: {status}**",
         "",
-        "| Provenance | Value |",
+        "This report is generated directly from a fresh GitHub-hosted validation run. It is not a manually copied benchmark snapshot.",
+        "",
+        "## What happened",
+        "",
+        "| Scenario | Fault injected | What the workload observed | Status |",
+        "| --- | --- | --- | --- |",
+        f"| ext4 filesystem | None | Format → mount → write → sync → read back | {pass_text(m['ext4_pass'])} |",
+        f"| Raw block read | +{fmt_num(m['raw_latency_configured_ms'])} ms latency | {fmt_num(m['raw_latency_observed_ms'])} ms end-to-end read latency | {pass_text(m['raw_latency_observed_ms'] is not None)} |",
+        f"| Raw block read | 100% read failure | Kernel rejected the read with I/O error | {pass_text(m['raw_read_failure_pass'])} |",
+        f"| Raw block write | 100% write failure | Kernel rejected the write with I/O error | {pass_text(m['raw_write_failure_pass'])} |",
+        f"| fio 4 KiB QD1 random read | +{fmt_num(m['fio_injected_latency_ms'])} ms latency | {fmt_num(m['fio_baseline_iops'])} → {fmt_num(m['fio_injected_iops'])} IOPS | {pass_text(m['fio_pass'])} |",
+        f"| SQLite durable transaction | +{fmt_num(m['sqlite_injected_latency_ms'])} ms latency | {fmt_num(m['sqlite_baseline_ms'])} → {fmt_num(m['sqlite_injected_ms'])} ms | {pass_text(m['sqlite_latency_pass'])} |",
+        f"| SQLite durable transaction | 100% write failure | `{m.get('sqlite_failure') or 'n/a'}` | {pass_text(m['sqlite_failure_pass'])} |",
+        f"| PostgreSQL durable commit | +{fmt_num(m['postgres_injected_latency_ms'])} ms latency | {fmt_num(m['postgres_baseline_ms'])} → {fmt_num(m['postgres_injected_ms'])} ms | {pass_text(m['postgres_latency_pass'])} |",
+        f"| PostgreSQL durable commit | 100% write failure | `{m.get('postgres_failure') or 'n/a'}` | {pass_text(m['postgres_failure_pass'])} |",
+        f"| debugfs accounting | Mixed workload | Requests, bytes, failures, and delayed I/O recorded | {pass_text(m['stats_pass'])} |",
+        "",
+        "## Provenance",
+        "",
+        "| Field | Value |",
         "| --- | --- |",
         f"| Commit | [{sha[:12]}]({commit_url}) |" if commit_url else f"| Commit | {sha[:12]} |",
         f"| GitHub Actions run | [#{data['run_id']}]({run_url}) |" if run_url else f"| GitHub Actions run | {data['run_id']} |",
-        f"| Runner image | {env.get('image_os', 'n/a')} {env.get('image_version', '')} |",
+        f"| Runner | {env.get('image_os', 'n/a')} {env.get('image_version', '')} |",
         f"| Kernel | {env.get('kernel', 'n/a')} |",
         f"| Architecture | {env.get('architecture', 'n/a')} |",
         f"| fio | {env.get('fio_version', 'n/a')} |",
         f"| SQLite | {env.get('sqlite_version', 'n/a')} |",
         f"| PostgreSQL | {env.get('postgres_version', 'n/a')} |",
         "",
-        "| Check | Baseline | Injected fault | Result |",
-        "| --- | ---: | ---: | --- |",
-        f"| Raw read latency | n/a | {fmt_num(m['raw_latency_observed_ms'])} ms with {fmt_num(m['raw_latency_configured_ms'])} ms configured | PASS |",
-        f"| fio 4 KiB QD1 random read | {fmt_num(m['fio_baseline_iops'])} IOPS | {fmt_num(m['fio_injected_iops'])} IOPS with {fmt_num(m['fio_injected_latency_ms'])} ms latency | PASS |",
-        f"| SQLite durable transaction | {fmt_num(m['sqlite_baseline_ms'])} ms | {fmt_num(m['sqlite_injected_ms'])} ms with {fmt_num(m['sqlite_injected_latency_ms'])} ms latency | PASS |",
-        f"| PostgreSQL durable transaction | {fmt_num(m['postgres_baseline_ms'])} ms | {fmt_num(m['postgres_injected_ms'])} ms with {fmt_num(m['postgres_injected_latency_ms'])} ms latency | PASS |",
-        f"| SQLite write failure | n/a | {m.get('sqlite_failure') or 'n/a'} | PASS |",
-        f"| PostgreSQL write failure | n/a | {m.get('postgres_failure') or 'n/a'} | PASS |",
-        "",
-        f"Generated from GitHub-hosted validation at {data['generated_at']}.",
-        "",
-        "Absolute baseline throughput is environment-specific. The reproducible claims are the fault behavior and relative response to configured injection.",
+        f"Generated at {data['generated_at']}. Absolute baseline performance is environment-specific; the reproducible claim is how real workloads respond to the configured block-layer faults.",
     ]
     return "\n".join(lines) + "\n"
+
+
+def svg_text(x, y, text, size=15, weight=400, fill="#c9d1d9"):
+    return (
+        f'<text x="{x}" y="{y}" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, '
+        f'\'Segoe UI\', sans-serif" font-size="{size}" font-weight="{weight}" '
+        f'fill="{fill}">{xml_escape(str(text))}</text>'
+    )
+
+
+def svg_mono(x, y, text, size=14, weight=400, fill="#c9d1d9"):
+    return (
+        f'<text x="{x}" y="{y}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" '
+        f'font-size="{size}" font-weight="{weight}" fill="{fill}">{xml_escape(str(text))}</text>'
+    )
+
+
+def svg_card(x, y, width, height, title, fault, observed, status="PASS", mono=False):
+    nodes = [
+        f'<rect x="{x}" y="{y}" width="{width}" height="{height}" rx="10" fill="#161b22" stroke="#30363d"/>',
+        svg_text(x + 18, y + 28, title, 15, 700, "#f0f6fc"),
+        svg_text(x + width - 62, y + 28, status, 12, 700, "#3fb950" if status == "PASS" else "#f85149"),
+        svg_text(x + 18, y + 53, fault, 12, 600, "#8b949e"),
+        (svg_mono if mono else svg_text)(x + 18, y + 79, observed, 14, 500, "#c9d1d9"),
+    ]
+    return "\n".join(nodes)
 
 
 def svg_report(data):
     env = data["environment"]
     m = data["metrics"]
     status = "PASS" if data["status"] == "passed" else "FAIL"
-    lines = [
-        f"Latest hosted validation: {status}",
-        f"Linux {env.get('kernel', 'n/a')} · commit {data['commit'][:12]}",
-        f"Raw latency: {fmt_num(m['raw_latency_observed_ms'])} ms observed @ {fmt_num(m['raw_latency_configured_ms'])} ms configured",
-        f"fio QD1: {fmt_num(m['fio_baseline_iops'])} → {fmt_num(m['fio_injected_iops'])} IOPS @ {fmt_num(m['fio_injected_latency_ms'])} ms",
-        f"SQLite: {fmt_num(m['sqlite_baseline_ms'])} → {fmt_num(m['sqlite_injected_ms'])} ms · PostgreSQL: {fmt_num(m['postgres_baseline_ms'])} → {fmt_num(m['postgres_injected_ms'])} ms",
+    width = 1000
+    height = 650
+    nodes = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        f'<rect width="{width}" height="{height}" rx="14" fill="#0d1117"/>',
+        f'<rect x=".5" y=".5" width="{width-1}" height="{height-1}" rx="13.5" fill="none" stroke="#30363d"/>',
+        svg_text(28, 42, "LIVE HOSTED VALIDATION", 13, 700, "#8b949e"),
+        svg_text(28, 75, "Fault Simulation Disk", 27, 700, "#f0f6fc"),
+        svg_text(28, 102, "Inject a storage fault at the Linux block layer → observe the real workload above it.", 15, 400, "#8b949e"),
+        svg_text(897, 75, status, 18, 700, "#3fb950" if status == "PASS" else "#f85149"),
+        svg_text(28, 135, f"Linux {env.get('kernel', 'n/a')}  •  commit {data['commit'][:12]}  •  Actions #{data['run_id']}", 13, 400, "#8b949e"),
+        svg_text(28, 174, "1  NORMAL BLOCK DEVICE", 13, 700, "#58a6ff"),
+        svg_card(28, 190, 944, 94, "ext4 filesystem", "NO FAULT", "format → mount → write → sync → read back", pass_text(m["ext4_pass"])),
+        svg_text(28, 318, "2  LATENCY PROPAGATION", 13, 700, "#58a6ff"),
+        svg_card(28, 334, 220, 98, "Raw read", f"+{fmt_num(m['raw_latency_configured_ms'])} ms", f"{fmt_num(m['raw_latency_observed_ms'])} ms observed"),
+        svg_card(260, 334, 220, 98, "fio", f"+{fmt_num(m['fio_injected_latency_ms'])} ms", f"{fmt_num(m['fio_baseline_iops'])} → {fmt_num(m['fio_injected_iops'])} IOPS"),
+        svg_card(492, 334, 220, 98, "SQLite", f"+{fmt_num(m['sqlite_injected_latency_ms'])} ms", f"{fmt_num(m['sqlite_baseline_ms'])} → {fmt_num(m['sqlite_injected_ms'])} ms"),
+        svg_card(724, 334, 248, 98, "PostgreSQL", f"+{fmt_num(m['postgres_injected_latency_ms'])} ms", f"{fmt_num(m['postgres_baseline_ms'])} → {fmt_num(m['postgres_injected_ms'])} ms"),
+        svg_text(28, 466, "3  I/O ERROR PROPAGATION", 13, 700, "#58a6ff"),
+        svg_card(28, 482, 220, 98, "Raw read", "100% READ FAIL", "read rejected with I/O error", pass_text(m["raw_read_failure_pass"])),
+        svg_card(260, 482, 220, 98, "Raw write", "100% WRITE FAIL", "write rejected with I/O error", pass_text(m["raw_write_failure_pass"])),
+        svg_card(492, 482, 220, 98, "SQLite", "100% WRITE FAIL", compact_failure(m.get("sqlite_failure"), 40), pass_text(m["sqlite_failure_pass"]), True),
+        svg_card(724, 482, 248, 98, "PostgreSQL", "100% WRITE FAIL", compact_failure(m.get("postgres_failure"), 43), pass_text(m["postgres_failure_pass"]), True),
+        svg_text(28, 616, "Generated from raw GitHub-hosted validation output — not manually copied benchmark data.", 12, 400, "#8b949e"),
+        "</svg>",
     ]
-    escaped = [xml_escape(x) for x in lines]
-    text_nodes = "\n".join(
-        f'<text x="28" y="{42 + i*31}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="{18 if i == 0 else 15}" font-weight="{700 if i == 0 else 400}" fill="{"#3fb950" if i == 0 else "#c9d1d9"}">{line}</text>'
-        for i, line in enumerate(escaped)
-    )
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="820" height="185" viewBox="0 0 820 185">
-<rect width="820" height="185" rx="12" fill="#0d1117"/>
-<rect x=".5" y=".5" width="819" height="184" rx="11.5" fill="none" stroke="#30363d"/>
-{text_nodes}
-</svg>
-"""
+    return "\n".join(nodes) + "\n"
+
+
+def validate_parsed_results(metrics):
+    required_true = [
+        "ext4_pass",
+        "raw_read_failure_pass",
+        "raw_write_failure_pass",
+        "stats_pass",
+        "fio_pass",
+        "sqlite_latency_pass",
+        "sqlite_failure_pass",
+        "postgres_latency_pass",
+        "postgres_failure_pass",
+        "final_pass",
+    ]
+    missing_pass = [name for name in required_true if not metrics.get(name)]
+
+    required_values = [
+        "raw_latency_configured_ms",
+        "raw_latency_observed_ms",
+        "fio_baseline_iops",
+        "fio_injected_latency_ms",
+        "fio_injected_iops",
+        "sqlite_baseline_ms",
+        "sqlite_injected_latency_ms",
+        "sqlite_injected_ms",
+        "sqlite_failure",
+        "postgres_baseline_ms",
+        "postgres_injected_latency_ms",
+        "postgres_injected_ms",
+        "postgres_failure",
+    ]
+    missing_values = [name for name in required_values if metrics.get(name) is None]
+
+    if missing_pass or missing_values:
+        details = []
+        if missing_pass:
+            details.append("missing PASS markers: " + ", ".join(missing_pass))
+        if missing_values:
+            details.append("missing parsed values: " + ", ".join(missing_values))
+        raise SystemExit("validation report is incomplete: " + "; ".join(details))
 
 
 def main():
@@ -136,6 +249,7 @@ def main():
 
     environment = parse_environment(read_text(args.environment))
     metrics = parse_validation(read_text(args.validation))
+    validate_parsed_results(metrics)
 
     repository = os.getenv("GITHUB_REPOSITORY", "")
     commit = os.getenv("GITHUB_SHA", environment.get("commit", ""))
@@ -144,7 +258,7 @@ def main():
     run_url = f"{server}/{repository}/actions/runs/{run_id}" if repository and run_id else ""
 
     data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "passed" if metrics["final_pass"] else "failed",
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "repository": repository,
@@ -167,9 +281,6 @@ def main():
     if os.getenv("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
             summary.write(md)
-
-    if data["status"] != "passed":
-        raise SystemExit("validation output did not contain final PASS marker")
 
 
 if __name__ == "__main__":
