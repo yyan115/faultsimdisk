@@ -15,6 +15,19 @@ require_vm() {
 	fi
 }
 
+require_loaded() {
+	test -d /sys/module/faultsimdisk || {
+		echo "faultsimdisk is not loaded." >&2
+		exit 1
+	}
+}
+
+show_config() {
+	for name in latency_ms read_fail_pct write_fail_pct; do
+		printf '%-16s %s\n' "$name" "$(cat "/sys/module/faultsimdisk/parameters/$name")"
+	done
+}
+
 case "${1:-}" in
 	load)
 		require_vm
@@ -36,9 +49,30 @@ case "${1:-}" in
 		if test -d /sys/module/faultsimdisk; then
 			echo "faultsimdisk: loaded"
 			lsblk /dev/faultsim0
+			show_config
 		else
 			echo "faultsimdisk: not loaded"
 		fi
+		;;
+	config)
+		require_loaded
+		show_config
+		;;
+	set)
+		require_vm
+		require_loaded
+		name="${2:-}"
+		value="${3:-}"
+		case "$name" in
+			latency_ms|read_fail_pct|write_fail_pct) ;;
+			*)
+				echo "Unknown setting: $name" >&2
+				exit 2
+				;;
+		esac
+		test -n "$value" || { echo "Usage: $0 set <setting> <value>" >&2; exit 2; }
+		printf '%s\n' "$value" | sudo tee "/sys/module/faultsimdisk/parameters/$name" >/dev/null
+		printf '%s=%s\n' "$name" "$(cat "/sys/module/faultsimdisk/parameters/$name")"
 		;;
 	logs)
 		sudo dmesg --color=never | grep -E 'faultsimdisk|faultsim0' | tail -n 30
@@ -47,8 +81,12 @@ case "${1:-}" in
 		require_vm
 		sudo "$ROOT/scripts/smoke-test.sh"
 		;;
+	fault-test)
+		require_vm
+		sudo "$ROOT/scripts/fault-test.sh"
+		;;
 	*)
-		echo "Usage: $0 {load|unload|status|logs|smoke}" >&2
+		echo "Usage: $0 {load|unload|status|config|set|logs|smoke|fault-test}" >&2
 		exit 2
 		;;
 esac

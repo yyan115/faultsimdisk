@@ -3,8 +3,6 @@
  * Fault Simulation Disk
  *
  * A Linux block-device simulator for reproducible storage fault testing.
- * Stage 1 provides a functional in-memory block device. Fault injection is
- * added in later stages.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -13,10 +11,15 @@
 #include <linux/blkdev.h>
 #include <linux/highmem.h>
 #include <linux/init.h>
+#include <linux/jiffies.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/random.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/version.h>
 #include <linux/vmalloc.h>
+#include <linux/workqueue.h>
 
 #define FSD_DRIVER_NAME "faultsimdisk"
 #define FSD_DISK_NAME "faultsim0"
@@ -24,6 +27,7 @@
 #define FSD_DEFAULT_SIZE_MB 64UL
 #define FSD_MIN_SIZE_MB 8UL
 #define FSD_MAX_SIZE_MB 1024UL
+#define FSD_MAX_LATENCY_MS 5000U
 
 struct fsd_device {
 	int major;
@@ -31,6 +35,13 @@ struct fsd_device {
 	u8 *data;
 	size_t capacity_bytes;
 	spinlock_t data_lock;
+	struct workqueue_struct *io_wq;
+};
+
+struct fsd_io_work {
+	struct delayed_work work;
+	struct bio *bio;
+	bool fail;
 };
 
 static struct fsd_device fsd;
@@ -38,6 +49,59 @@ static struct fsd_device fsd;
 static unsigned long size_mb = FSD_DEFAULT_SIZE_MB;
 module_param(size_mb, ulong, 0444);
 MODULE_PARM_DESC(size_mb, "Device capacity in MiB (8-1024, default 64)");
+
+static unsigned int latency_ms;
+static unsigned int read_fail_pct;
+static unsigned int write_fail_pct;
+
+static int fsd_set_latency(const char *val, const struct kernel_param *kp)
+{
+	unsigned int parsed;
+	int ret;
+
+	ret = kstrtouint(val, 0, &parsed);
+	if (ret)
+		return ret;
+	if (parsed > FSD_MAX_LATENCY_MS)
+		return -ERANGE;
+
+	*(unsigned int *)kp->arg = parsed;
+	return 0;
+}
+
+static int fsd_set_percent(const char *val, const struct kernel_param *kp)
+{
+	unsigned int parsed;
+	int ret;
+
+	ret = kstrtouint(val, 0, &parsed);
+	if (ret)
+		return ret;
+	if (parsed > 100)
+		return -ERANGE;
+
+	*(unsigned int *)kp->arg = parsed;
+	return 0;
+}
+
+static const struct kernel_param_ops fsd_latency_ops = {
+	.set = fsd_set_latency,
+	.get = param_get_uint,
+};
+
+static const struct kernel_param_ops fsd_percent_ops = {
+	.set = fsd_set_percent,
+	.get = param_get_uint,
+};
+
+module_param_cb(latency_ms, &fsd_latency_ops, &latency_ms, 0644);
+MODULE_PARM_DESC(latency_ms, "Completion latency added to each I/O in milliseconds (0-5000)");
+
+module_param_cb(read_fail_pct, &fsd_percent_ops, &read_fail_pct, 0644);
+MODULE_PARM_DESC(read_fail_pct, "Percentage of read requests completed with I/O error (0-100)");
+
+module_param_cb(write_fail_pct, &fsd_percent_ops, &write_fail_pct, 0644);
+MODULE_PARM_DESC(write_fail_pct, "Percentage of write requests completed with I/O error (0-100)");
 
 static bool fsd_bio_in_bounds(const struct bio *bio)
 {
@@ -80,10 +144,29 @@ static void fsd_zero_bio_range(struct bio *bio)
 	spin_unlock_irqrestore(&fsd.data_lock, flags);
 }
 
-static void fsd_submit_bio(struct bio *bio)
+static bool fsd_should_fail(const struct bio *bio)
 {
-	if (!fsd_bio_in_bounds(bio)) {
-		bio_io_error(bio);
+	unsigned int failure_pct;
+
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		failure_pct = READ_ONCE(read_fail_pct);
+		break;
+	case REQ_OP_WRITE:
+		failure_pct = READ_ONCE(write_fail_pct);
+		break;
+	default:
+		return false;
+	}
+
+	return failure_pct != 0 && get_random_u32_below(100) < failure_pct;
+}
+
+static void fsd_complete_bio(struct bio *bio, bool fail)
+{
+	if (fail) {
+		bio->bi_status = BLK_STS_IOERR;
+		bio_endio(bio);
 		return;
 	}
 
@@ -108,6 +191,43 @@ static void fsd_submit_bio(struct bio *bio)
 	}
 
 	bio_endio(bio);
+}
+
+static void fsd_io_workfn(struct work_struct *work)
+{
+	struct fsd_io_work *io =
+		container_of(to_delayed_work(work), struct fsd_io_work, work);
+
+	fsd_complete_bio(io->bio, io->fail);
+	kfree(io);
+}
+
+static void fsd_submit_bio(struct bio *bio)
+{
+	struct fsd_io_work *io;
+	unsigned int delay_ms;
+
+	if (!fsd_bio_in_bounds(bio)) {
+		bio_io_error(bio);
+		return;
+	}
+
+	delay_ms = READ_ONCE(latency_ms);
+	if (delay_ms == 0) {
+		fsd_complete_bio(bio, fsd_should_fail(bio));
+		return;
+	}
+
+	io = kmalloc(sizeof(*io), GFP_ATOMIC);
+	if (!io) {
+		bio_io_error(bio);
+		return;
+	}
+
+	io->bio = bio;
+	io->fail = fsd_should_fail(bio);
+	INIT_DELAYED_WORK(&io->work, fsd_io_workfn);
+	queue_delayed_work(fsd.io_wq, &io->work, msecs_to_jiffies(delay_ms));
 }
 
 static const struct block_device_operations fsd_fops = {
@@ -153,10 +273,17 @@ static int __init fsd_init(void)
 
 	spin_lock_init(&fsd.data_lock);
 
+	fsd.io_wq = alloc_workqueue(FSD_DRIVER_NAME "_io",
+				    WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
+	if (!fsd.io_wq) {
+		ret = -ENOMEM;
+		goto err_free_data;
+	}
+
 	fsd.major = register_blkdev(0, FSD_DRIVER_NAME);
 	if (fsd.major < 0) {
 		ret = fsd.major;
-		goto err_free_data;
+		goto err_destroy_wq;
 	}
 
 	fsd.disk = fsd_alloc_disk();
@@ -184,6 +311,8 @@ err_put_disk:
 	put_disk(fsd.disk);
 err_unregister_major:
 	unregister_blkdev(fsd.major, FSD_DRIVER_NAME);
+err_destroy_wq:
+	destroy_workqueue(fsd.io_wq);
 err_free_data:
 	vfree(fsd.data);
 	fsd.data = NULL;
@@ -193,6 +322,8 @@ err_free_data:
 static void __exit fsd_exit(void)
 {
 	del_gendisk(fsd.disk);
+	flush_workqueue(fsd.io_wq);
+	destroy_workqueue(fsd.io_wq);
 	put_disk(fsd.disk);
 	unregister_blkdev(fsd.major, FSD_DRIVER_NAME);
 	vfree(fsd.data);

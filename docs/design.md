@@ -1,29 +1,51 @@
 # Design
 
-Fault Simulation Disk is a Linux block-device simulator intended for controlled storage failure experiments.
+Fault Simulation Disk is a Linux block-device simulator for controlled storage failure experiments.
 
-## Stage 1 data path
+## I/O path
 
 ```text
 userspace application
         ↓
-filesystem (for example ext4)
+filesystem / raw block I/O
         ↓
 Linux block layer
         ↓
-bio submitted to faultsimdisk
+fsd_submit_bio()
         ↓
-read/write against the backing memory
+fault policy snapshot
+        ↓
+immediate completion OR delayed workqueue
+        ↓
+read/write against backing memory OR injected I/O error
         ↓
 bio completion
 ```
 
-The driver registers one block device, `/dev/faultsim0`. Its capacity is backed by zero-initialized kernel virtual memory. The block layer submits `bio` objects to the driver's `submit_bio` callback. Read and write segments are copied between the bio pages and the backing store.
+The driver registers `/dev/faultsim0` and stores its sectors in zero-initialized kernel virtual memory.
 
-A spinlock protects the backing store against concurrent data-path access. Flush completes immediately because the backing store has no volatile hardware cache. Discard and write-zeroes requests clear the corresponding memory range.
+### Latency injection
 
-The implementation intentionally starts with a synchronous data path. Later stages will insert configurable latency and failures before I/O completion, then expose counters and configuration for repeatable experiments.
+`submit_bio` may run in contexts where sleeping is unsafe, so configured latency is not implemented with a blocking sleep. Requests that need delay are moved to a dedicated delayed-work queue and completed later. Module unload removes the disk first, then flushes and destroys the workqueue before freeing backing memory.
+
+### Failure injection
+
+Read and write failure percentages are independently configurable. Each incoming read/write request samples the current percentage and either follows the normal data path or completes with `BLK_STS_IOERR`.
+
+Configuration is exposed through writable module parameters:
+
+```text
+/sys/module/faultsimdisk/parameters/latency_ms
+/sys/module/faultsimdisk/parameters/read_fail_pct
+/sys/module/faultsimdisk/parameters/write_fail_pct
+```
+
+The parameters are validated in-kernel: latency is limited to 0-5000 ms and percentages to 0-100.
+
+### Backing store
+
+A spinlock protects concurrent access to the in-memory backing store. Flush completes immediately because there is no volatile hardware cache. Discard and write-zeroes requests clear the corresponding memory range.
 
 ## Compatibility
 
-The external module targets modern Linux kernels. A small compatibility branch handles the `blk_alloc_disk()` API change introduced after Linux 6.8 so CI can compile against Ubuntu 24.04 headers while development runs on newer kernels.
+A small compatibility branch handles the `blk_alloc_disk()` API change introduced after Linux 6.8 so CI can compile against Ubuntu 24.04 headers while development runs on newer kernels.

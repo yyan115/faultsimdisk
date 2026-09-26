@@ -2,7 +2,7 @@
 
 A Linux kernel block-device simulator for reproducible storage fault testing.
 
-**Current stage:** functional in-memory block device. Fault injection and observability come next.
+Fault Simulation Disk exposes `/dev/faultsim0` as a normal block device while allowing runtime injection of storage latency and I/O failures.
 
 ```text
 application / filesystem
@@ -11,38 +11,42 @@ Linux block layer
         ↓
 /dev/faultsim0
         ↓
-FaultSimDisk driver
-        ↓
-in-memory backing store
+FaultSimDisk
+   ├─ latency injection
+   ├─ read/write failure injection
+   └─ in-memory backing store
 ```
 
 ## Build and test
 
-Use a disposable Linux VM for development.
+Use a disposable Linux VM.
 
 ```bash
 make
 ./scripts/dev.sh load
 ./scripts/dev.sh smoke
-./scripts/dev.sh logs
+./scripts/dev.sh fault-test
 ./scripts/dev.sh unload
 ```
 
-The smoke test formats `/dev/faultsim0` as ext4, mounts it, writes a file, syncs it, and reads the data back.
-
-The device size defaults to 64 MiB and can be selected at load time:
+## Runtime fault controls
 
 ```bash
-sudo insmod faultsimdisk.ko size_mb=128
+./scripts/dev.sh set latency_ms 100
+./scripts/dev.sh set read_fail_pct 5
+./scripts/dev.sh set write_fail_pct 10
+./scripts/dev.sh config
 ```
+
+Settings affect new I/O requests and can be changed while the module is loaded. Latency is bounded to 0-5000 ms; failure rates are 0-100%.
 
 ## Roadmap
 
 - [x] Functional Linux block device
 - [x] Read/write path and in-memory backing store
-- [ ] Configurable latency injection
-- [ ] Configurable I/O failure injection
+- [x] Configurable latency injection
+- [x] Configurable read/write failure injection
 - [ ] Runtime statistics and observability
-- [ ] `fio` fault and performance scenarios
+- [ ] `fio` and application resilience scenarios
 
 See [design notes](docs/design.md) for the architecture.
