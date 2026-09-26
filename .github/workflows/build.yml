@@ -24,7 +24,7 @@ jobs:
           sudo apt-get install -y build-essential linux-headers-generic kmod shellcheck
 
       - name: Lint scripts
-        run: shellcheck scripts/dev.sh scripts/smoke-test.sh scripts/fault-test.sh scripts/stats-test.sh
+        run: shellcheck scripts/dev.sh scripts/smoke-test.sh scripts/fault-test.sh scripts/stats-test.sh scripts/fio-test.sh scripts/sqlite-test.sh scripts/final-validate.sh
 
       - name: Build module
         shell: bash

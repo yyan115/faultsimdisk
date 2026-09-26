@@ -59,3 +59,15 @@ A spinlock protects concurrent access to the in-memory backing store. Flush comp
 ## Compatibility
 
 A small compatibility branch handles the `blk_alloc_disk()` API change introduced after Linux 6.8 so CI can compile against Ubuntu 24.04 headers while development runs on newer kernels.
+
+
+## Validation
+
+The repository includes end-to-end validation at multiple layers:
+
+- raw block I/O verifies deterministic latency and failure injection;
+- debugfs checks verify request, byte, failure, and delayed-I/O accounting;
+- `fio` compares single-depth random-read throughput with and without injected latency;
+- SQLite runs on ext4 backed by `/dev/faultsim0`, demonstrating both transaction slowdown and application-visible I/O failure.
+
+Measured performance is intentionally not hard-coded because results depend on the host and VM. The validation scripts print the values from each run.

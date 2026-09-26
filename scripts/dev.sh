@@ -104,8 +104,21 @@ case "${1:-}" in
 		require_vm
 		sudo "$ROOT/scripts/stats-test.sh"
 		;;
+	fio-test)
+		require_vm
+		sudo "$ROOT/scripts/fio-test.sh"
+		;;
+	sqlite-test)
+		require_vm
+		sudo "$ROOT/scripts/sqlite-test.sh"
+		;;
+	validate)
+		require_vm
+		require_loaded
+		"$ROOT/scripts/final-validate.sh"
+		;;
 	*)
-		echo "Usage: $0 {load|unload|status|config|set|stats|logs|smoke|fault-test|stats-test}" >&2
+		echo "Usage: $0 {load|unload|status|config|set|stats|logs|smoke|fault-test|stats-test|fio-test|sqlite-test|validate}" >&2
 		exit 2
 		;;
 esac
