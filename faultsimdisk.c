@@ -7,6 +7,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/atomic.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/debugfs.h>
@@ -15,12 +16,14 @@
 #include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/mm.h>
 #include <linux/random.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/version.h>
 #include <linux/vmalloc.h>
+#include <linux/wait.h>
 #include <linux/workqueue.h>
 
 #define FSD_DRIVER_NAME "faultsimdisk"
@@ -48,6 +51,8 @@ struct fsd_device {
 	size_t capacity_bytes;
 	spinlock_t data_lock;
 	struct workqueue_struct *io_wq;
+	wait_queue_head_t io_drain_wait;
+	atomic_t delayed_inflight;
 	struct dentry *debugfs_dir;
 	struct fsd_stats stats;
 };
@@ -79,7 +84,7 @@ static int fsd_set_latency(const char *val, const struct kernel_param *kp)
 	if (parsed > FSD_MAX_LATENCY_MS)
 		return -ERANGE;
 
-	*(unsigned int *)kp->arg = parsed;
+	WRITE_ONCE(*(unsigned int *)kp->arg, parsed);
 	return 0;
 }
 
@@ -94,7 +99,7 @@ static int fsd_set_percent(const char *val, const struct kernel_param *kp)
 	if (parsed > 100)
 		return -ERANGE;
 
-	*(unsigned int *)kp->arg = parsed;
+	WRITE_ONCE(*(unsigned int *)kp->arg, parsed);
 	return 0;
 }
 
@@ -190,7 +195,7 @@ static void fsd_debugfs_init(void)
 	struct dentry *stats_file;
 
 	fsd.debugfs_dir = debugfs_create_dir(FSD_DRIVER_NAME, NULL);
-	if (IS_ERR(fsd.debugfs_dir)) {
+	if (IS_ERR_OR_NULL(fsd.debugfs_dir)) {
 		pr_warn("debugfs unavailable; runtime stats disabled\n");
 		fsd.debugfs_dir = NULL;
 		return;
@@ -198,7 +203,7 @@ static void fsd_debugfs_init(void)
 
 	stats_file = debugfs_create_file("stats", 0444, fsd.debugfs_dir,
 					 NULL, &fsd_stats_fops);
-	if (IS_ERR(stats_file)) {
+	if (IS_ERR_OR_NULL(stats_file)) {
 		debugfs_remove_recursive(fsd.debugfs_dir);
 		fsd.debugfs_dir = NULL;
 		pr_warn("failed to create debugfs stats file\n");
@@ -239,11 +244,19 @@ static void fsd_copy_bio(struct bio *bio, bool write)
 static void fsd_zero_bio_range(struct bio *bio)
 {
 	size_t offset = (size_t)bio->bi_iter.bi_sector << SECTOR_SHIFT;
-	unsigned long flags;
+	size_t remaining = bio->bi_iter.bi_size;
 
-	spin_lock_irqsave(&fsd.data_lock, flags);
-	memset(fsd.data + offset, 0, bio->bi_iter.bi_size);
-	spin_unlock_irqrestore(&fsd.data_lock, flags);
+	while (remaining) {
+		size_t chunk = min_t(size_t, remaining, PAGE_SIZE);
+		unsigned long flags;
+
+		spin_lock_irqsave(&fsd.data_lock, flags);
+		memset(fsd.data + offset, 0, chunk);
+		spin_unlock_irqrestore(&fsd.data_lock, flags);
+
+		offset += chunk;
+		remaining -= chunk;
+	}
 }
 
 static bool fsd_should_fail(const struct bio *bio)
@@ -297,6 +310,12 @@ static void fsd_complete_bio(struct bio *bio, bool fail)
 	bio_endio(bio);
 }
 
+static void fsd_delayed_io_done(void)
+{
+	if (atomic_dec_and_test(&fsd.delayed_inflight))
+		wake_up_all(&fsd.io_drain_wait);
+}
+
 static void fsd_io_workfn(struct work_struct *work)
 {
 	struct fsd_io_work *io =
@@ -304,6 +323,7 @@ static void fsd_io_workfn(struct work_struct *work)
 
 	fsd_complete_bio(io->bio, io->fail);
 	kfree(io);
+	fsd_delayed_io_done();
 }
 
 static void fsd_submit_bio(struct bio *bio)
@@ -335,10 +355,12 @@ static void fsd_submit_bio(struct bio *bio)
 	io->bio = bio;
 	io->fail = fsd_should_fail(bio);
 	INIT_DELAYED_WORK(&io->work, fsd_io_workfn);
+	atomic_inc(&fsd.delayed_inflight);
 
 	if (!queue_delayed_work(fsd.io_wq, &io->work,
 				msecs_to_jiffies(delay_ms))) {
 		kfree(io);
+		fsd_delayed_io_done();
 		fsd_account_failure(bio);
 		bio_io_error(bio);
 		return;
@@ -389,6 +411,8 @@ static int __init fsd_init(void)
 		return -ENOMEM;
 
 	spin_lock_init(&fsd.data_lock);
+	init_waitqueue_head(&fsd.io_drain_wait);
+	atomic_set(&fsd.delayed_inflight, 0);
 
 	fsd.io_wq = alloc_workqueue(FSD_DRIVER_NAME "_io",
 				    WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
@@ -442,6 +466,14 @@ static void __exit fsd_exit(void)
 {
 	debugfs_remove_recursive(fsd.debugfs_dir);
 	del_gendisk(fsd.disk);
+
+	/*
+	 * delayed_work can still be timer-pending and invisible to
+	 * flush_workqueue()/destroy_workqueue(). Wait until every delayed bio
+	 * has reached its callback before tearing the workqueue down.
+	 */
+	wait_event(fsd.io_drain_wait,
+		   atomic_read(&fsd.delayed_inflight) == 0);
 	flush_workqueue(fsd.io_wq);
 	destroy_workqueue(fsd.io_wq);
 	put_disk(fsd.disk);

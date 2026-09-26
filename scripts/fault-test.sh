@@ -55,4 +55,4 @@ fi
 echo "PASS: read_fail_pct=100 rejected a raw read"
 
 reset_faults
-echo "PASS: Stage 2 latency and failure injection checks completed"
+echo "PASS: latency and failure injection checks completed"

@@ -26,7 +26,9 @@ The driver registers `/dev/faultsim0` and stores its sectors in zero-initialized
 
 ### Latency injection
 
-`submit_bio` may run in contexts where sleeping is unsafe, so configured latency is not implemented with a blocking sleep. Requests that need delay are moved to a dedicated delayed-work queue and completed later. Module unload removes the disk first, then flushes and destroys the workqueue before freeing backing memory.
+`submit_bio` may run in contexts where sleeping is unsafe, so configured latency is not implemented with a blocking sleep. Requests that need delay are moved to a dedicated delayed-work queue and completed later.
+
+Delayed requests are explicitly counted while timer-pending or queued. Module unload removes the disk, waits until every delayed I/O callback has completed, then flushes and destroys the workqueue before freeing the backing store. This avoids destroying a workqueue while a `delayed_work` item still exists only on its timer.
 
 ### Failure injection
 
@@ -44,7 +46,7 @@ The parameters are validated in-kernel: latency is limited to 0-5000 ms and perc
 
 ### Observability
 
-The driver maintains lock-free atomic counters for submitted reads and writes, successful bytes transferred, failed read/write requests, and delayed requests. A read-only debugfs view exposes these counters at:
+The driver maintains atomic counters for submitted reads and writes, successful bytes transferred, failed read/write requests, and delayed requests. A read-only debugfs view exposes these counters at:
 
 ```text
 /sys/kernel/debug/faultsimdisk/stats
@@ -54,20 +56,21 @@ Configuration remains in module parameters under sysfs, while diagnostic statist
 
 ### Backing store
 
-A spinlock protects concurrent access to the in-memory backing store. Flush completes immediately because there is no volatile hardware cache. Discard and write-zeroes requests clear the corresponding memory range.
+A spinlock protects concurrent access to the in-memory backing store. Read and write BIO segments are copied while the relevant backing range is locked. Discard and write-zeroes operations clear the requested range in page-sized chunks so a large request does not keep interrupts disabled for the full range. Flush completes immediately because there is no volatile hardware cache.
 
 ## Compatibility
 
-A small compatibility branch handles the `blk_alloc_disk()` API change introduced after Linux 6.8 so CI can compile against Ubuntu 24.04 headers while development runs on newer kernels.
-
+A small compatibility branch handles the `blk_alloc_disk()` API change introduced after Linux 6.8 so CI can compile against Ubuntu 24.04 headers while runtime validation also exercises newer kernels.
 
 ## Validation
 
-The repository includes end-to-end validation at multiple layers:
+The repository validates the driver at multiple layers:
 
-- raw block I/O verifies deterministic latency and failure injection;
+- raw block I/O verifies deterministic latency and read/write failure injection;
 - debugfs checks verify request, byte, failure, and delayed-I/O accounting;
 - `fio` compares single-depth random-read throughput with and without injected latency;
-- SQLite runs on ext4 backed by `/dev/faultsim0`, demonstrating both transaction slowdown and application-visible I/O failure.
+- SQLite runs on ext4 backed by `/dev/faultsim0`, validating transaction slowdown and application-visible I/O failure;
+- PostgreSQL runs a disposable cluster with `fsync=on` and `synchronous_commit=on`, validating durable-commit latency and WAL write-failure propagation;
+- GitHub-hosted runtime integration rebuilds and loads the module on a fresh runner and publishes the exact environment, raw output, structured results, hashes, and attested evidence.
 
-Measured performance is intentionally not hard-coded because results depend on the host and VM. The validation scripts print the values from each run.
+Absolute performance numbers are environment-specific. The validation focuses on reproducible fault behavior and relative response to configured injection.

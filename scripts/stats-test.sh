@@ -82,4 +82,4 @@ after_delayed=$(stat_value delayed_requests)
 echo "PASS: delayed request counter increased"
 
 printf '0\n' > "$PARAMS/latency_ms"
-echo "PASS: Stage 3 statistics checks completed"
+echo "PASS: runtime statistics checks completed"

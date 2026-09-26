@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import html
 import json
 import os
 import re
@@ -102,88 +101,6 @@ def markdown_report(data):
         "Absolute baseline throughput is environment-specific. The reproducible claims are the fault behavior and relative response to configured injection.",
     ]
     return "\n".join(lines) + "\n"
-
-
-def html_report(data):
-    env = data["environment"]
-    m = data["metrics"]
-    repo = html.escape(data["repository"])
-    sha = html.escape(data["commit"])
-    run_url = html.escape(data["run_url"])
-    commit_url = f"https://github.com/{repo}/commit/{sha}"
-    status = "PASS" if data["status"] == "passed" else "FAIL"
-
-    def e(value):
-        return html.escape(str(value))
-
-    rows = [
-        ("Raw read latency", "—", f"{fmt_num(m['raw_latency_observed_ms'])} ms @ {fmt_num(m['raw_latency_configured_ms'])} ms configured"),
-        ("fio 4 KiB QD1 randread", f"{fmt_num(m['fio_baseline_iops'])} IOPS", f"{fmt_num(m['fio_injected_iops'])} IOPS @ {fmt_num(m['fio_injected_latency_ms'])} ms"),
-        ("SQLite durable transaction", f"{fmt_num(m['sqlite_baseline_ms'])} ms", f"{fmt_num(m['sqlite_injected_ms'])} ms @ {fmt_num(m['sqlite_injected_latency_ms'])} ms"),
-        ("PostgreSQL durable transaction", f"{fmt_num(m['postgres_baseline_ms'])} ms", f"{fmt_num(m['postgres_injected_ms'])} ms @ {fmt_num(m['postgres_injected_latency_ms'])} ms"),
-    ]
-
-    metric_rows = "\n".join(
-        f"<tr><td>{e(name)}</td><td>{e(base)}</td><td>{e(injected)}</td></tr>"
-        for name, base, injected in rows
-    )
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fault Simulation Disk · Latest Verified Run</title>
-<style>
-:root {{ color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
-body {{ margin: 0; background: #0d1117; color: #e6edf3; }}
-main {{ max-width: 980px; margin: 0 auto; padding: 56px 24px 80px; }}
-a {{ color: #58a6ff; }}
-.eyebrow {{ color: #8b949e; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }}
-h1 {{ margin: 8px 0 8px; font-size: clamp(36px, 7vw, 64px); line-height: 1; }}
-.subtitle {{ color: #8b949e; font-size: 18px; max-width: 760px; }}
-.status {{ display:inline-block; margin: 22px 0; padding: 7px 12px; border:1px solid #238636; border-radius:999px; color:#3fb950; font-weight:700; }}
-.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:24px 0; }}
-.card {{ border:1px solid #30363d; border-radius:12px; padding:16px; background:#161b22; }}
-.label {{ color:#8b949e; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }}
-.value {{ margin-top:7px; font-weight:650; word-break:break-word; }}
-table {{ width:100%; border-collapse:collapse; margin:24px 0; }}
-th,td {{ text-align:left; border-bottom:1px solid #30363d; padding:12px 10px; }}
-th {{ color:#8b949e; font-size:13px; }}
-.note {{ color:#8b949e; font-size:14px; line-height:1.6; }}
-code {{ background:#161b22; border:1px solid #30363d; padding:2px 5px; border-radius:5px; }}
-</style>
-</head>
-<body>
-<main>
-<div class="eyebrow">Latest verified GitHub-hosted validation</div>
-<h1>Fault Simulation Disk</h1>
-<p class="subtitle">Reproducible storage-fault testing through a real Linux block device.</p>
-<div class="status">{status}</div>
-
-<div class="grid">
-<div class="card"><div class="label">Commit</div><div class="value"><a href="{commit_url}"><code>{sha[:12]}</code></a></div></div>
-<div class="card"><div class="label">Runner</div><div class="value">{e(env.get('image_os','n/a'))} {e(env.get('image_version',''))}</div></div>
-<div class="card"><div class="label">Kernel</div><div class="value">{e(env.get('kernel','n/a'))}</div></div>
-<div class="card"><div class="label">Evidence</div><div class="value"><a href="{run_url}">GitHub Actions run #{e(data['run_id'])}</a></div></div>
-</div>
-
-<table>
-<thead><tr><th>Check</th><th>Baseline</th><th>Injected fault</th></tr></thead>
-<tbody>{metric_rows}</tbody>
-</table>
-
-<div class="grid">
-<div class="card"><div class="label">SQLite failure propagation</div><div class="value">{e(m.get('sqlite_failure') or 'n/a')}</div></div>
-<div class="card"><div class="label">PostgreSQL failure propagation</div><div class="value">{e(m.get('postgres_failure') or 'n/a')}</div></div>
-</div>
-
-<p class="note">Generated automatically from a fresh GitHub-hosted VM. Absolute baseline performance is environment-specific; the project validates deterministic fault behavior and relative response to injected latency/errors. Raw output and hashes are attached to the linked workflow run.</p>
-<p class="note"><a href="https://github.com/{repo}">Repository</a> · <a href="https://github.com/{repo}/blob/main/docs/reproducibility.md">Reproducibility model</a></p>
-</main>
-</body>
-</html>
-"""
 
 
 def svg_report(data):

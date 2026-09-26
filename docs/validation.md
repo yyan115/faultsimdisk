@@ -1,8 +1,14 @@
 # Validation
 
-All destructive tests target only `/dev/faultsim0`. Run them inside a disposable VM with the module loaded.
+All destructive tests target only `/dev/faultsim0`. Run local validation inside a disposable VM with the module loaded.
 
-## Full validation
+## Hosted validation
+
+The primary validation runs in GitHub Actions on a fresh hosted Ubuntu VM. The latest generated report is published on the repository's `validation-results` branch and is linked directly from the README.
+
+Each hosted run records the exact commit, runner image, kernel, architecture, compiler, `fio`, SQLite, and PostgreSQL versions alongside the raw validation output and hashes.
+
+## Full local validation
 
 ```bash
 sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client
@@ -23,14 +29,13 @@ The suite resets fault settings after each scenario.
 
 ## Application-level failure propagation
 
-SQLite and PostgreSQL both depend on the filesystem and block device beneath their database files. PostgreSQL is tested with durability settings enabled so commits wait for WAL flushes rather than using non-durable shortcuts.
+SQLite and PostgreSQL both depend on the filesystem and block device beneath their database files. When Fault Simulation Disk completes writes with I/O errors, those failures propagate through the Linux storage stack to the database, allowing application-visible behavior to be tested without failing physical storage.
 
-SQLite depends on the filesystem and block device beneath its database file. When Fault Simulation Disk completes writes with I/O errors, the failure propagates through the Linux storage stack to SQLite, allowing the application-visible behavior to be tested without failing physical storage.
+PostgreSQL is tested with durability settings enabled so commits wait for WAL flushes rather than using non-durable shortcuts.
 
+## Recorded local compatibility run
 
-## Recorded validation run
-
-Environment:
+An earlier local compatibility run used:
 
 - Ubuntu 26.04 LTS
 - Linux 7.0.0-34-generic
@@ -38,14 +43,6 @@ Environment:
 - SQLite 3.46.1
 - 64 MiB Fault Simulation Disk
 
-Observed results:
+That run verified ext4 operation, raw latency and deterministic failures, statistics accounting, `fio` response to injected latency, and SQLite failure propagation. It predates the PostgreSQL scenario and is retained only as additional Linux 7.0 compatibility evidence.
 
-- ext4 format, mount, synchronized write, readback, and unmount completed successfully;
-- configured 100 ms raw-read latency measured 113 ms end to end;
-- 100% read and write failure policies rejected their corresponding raw I/O operations;
-- 4 KiB QD1 random-read performance measured 518,012.5 IOPS at baseline and 47.5 IOPS with 20 ms injected latency;
-- a full-synchronous SQLite transaction measured 6 ms at baseline and 262 ms with 50 ms injected storage latency;
-- a 100% write-failure policy propagated through ext4 to SQLite as `disk I/O error (10)`;
-- the final statistics snapshot recorded 1,036,953 read requests, 225 write requests, 1 failed read, 3 failed writes, and 109 delayed requests.
-
-These values are a validation snapshot from one VM run, not hardware performance guarantees.
+Absolute measurements from local or hosted runs are not hardware performance guarantees.
