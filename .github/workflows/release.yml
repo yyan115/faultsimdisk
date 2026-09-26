@@ -2,6 +2,10 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - RELEASE
     tags:
       - "v*"
 
@@ -21,11 +25,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify version tag
+      - name: Resolve release tag
+        id: release
         shell: bash
         run: |
           version=$(tr -d '[:space:]' < VERSION)
-          test "$GITHUB_REF_NAME" = "v$version"
+          tag="v$version"
+
+          if test "$GITHUB_REF_TYPE" = "tag"; then
+            test "$GITHUB_REF_NAME" = "$tag"
+          else
+            requested=$(tr -d '[:space:]' < RELEASE)
+            test "$requested" = "$tag"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Capture release environment
         shell: bash
@@ -95,7 +110,7 @@ jobs:
       - name: Build source release
         shell: bash
         run: |
-          version=$(tr -d '[:space:]' < VERSION)
+          version="${{ steps.release.outputs.version }}"
           dir="faultsimdisk-$version"
           mkdir -p "dist/$dir"
           cp faultsimdisk.c Makefile dkms.conf VERSION LICENSE README.md CHANGELOG.md CONTRIBUTING.md "dist/$dir/"
@@ -118,21 +133,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          version=$(tr -d '[:space:]' < VERSION)
+          version="${{ steps.release.outputs.version }}"
+          tag="${{ steps.release.outputs.tag }}"
           {
             cat verification/latest.md
             echo
             echo "## Release notes"
             echo
-            echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for the version history."
+            echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for the version history."
           } > release-notes.md
-          gh release create "$GITHUB_REF_NAME" \
+          create_args=()
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            create_args+=(--verify-tag)
+          else
+            create_args+=(--target "$GITHUB_SHA")
+          fi
+
+          gh release create "$tag" \
             "dist/faultsimdisk-$version.tar.gz" \
             "dist/faultsimdisk-$version.tar.gz.sha256" \
             runtime-evidence.tar.gz \
             evidence.sha256 \
             verification/latest.json \
             verification/latest.md \
-            --verify-tag \
-            --title "Fault Simulation Disk $GITHUB_REF_NAME" \
+            "${create_args[@]}" \
+            --title "Fault Simulation Disk $tag" \
             --notes-file release-notes.md
