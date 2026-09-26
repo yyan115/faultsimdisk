@@ -1,5 +1,7 @@
 # Fault Simulation Disk
 
+[![CI](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml)
+
 A Linux kernel block-device simulator for reproducible storage fault testing.
 
 Fault Simulation Disk exposes `/dev/faultsim0` as a normal block device and can inject storage latency or read/write failures at runtime.
@@ -57,4 +59,15 @@ Configuration lives under `/sys/module/faultsimdisk/parameters/`; statistics are
 
 On Ubuntu 26.04 with Linux 7.0.0-34, a 4 KiB QD1 random-read test measured **518k IOPS baseline vs 47.5 IOPS with 20 ms injected latency**. A SQLite full-synchronous transaction increased from **6 ms to 262 ms** with 50 ms storage latency, and a 100% write-failure policy surfaced as a SQLite disk I/O error. The validation suite also includes a disposable PostgreSQL cluster with `fsync` and synchronous commit enabled.
 
-See [design notes](docs/design.md) and [validation scenarios](docs/validation.md) for details.
+See [design notes](docs/design.md), [validation scenarios](docs/validation.md), and [contributing guidelines](CONTRIBUTING.md) for details.
+
+## Installation
+
+For normal development, build against the running kernel with `make`. For persistent installation across kernel updates, DKMS support is included:
+
+```bash
+sudo apt install dkms
+sudo ./scripts/install-dkms.sh
+```
+
+Tagged `v*` releases automatically publish a source archive and checksum through GitHub Releases.

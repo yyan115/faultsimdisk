@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible Fault Simulation Disk problem
+title: "[Bug] "
+labels:
+  - "bug"
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting a problem. Kernel and distribution details matter for block-driver issues.
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel
+      placeholder: "Linux 7.0.0-34-generic"
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      placeholder: "Ubuntu 26.04"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Include dmesg output and FaultSimDisk configuration if available.
+      render: shell

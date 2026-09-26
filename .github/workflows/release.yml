@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Verify version tag
+        shell: bash
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          test "$GITHUB_REF_NAME" = "v$version"
+
+      - name: Build source release
+        shell: bash
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          dir="faultsimdisk-$version"
+          mkdir -p "dist/$dir"
+          cp faultsimdisk.c Makefile dkms.conf VERSION LICENSE README.md CHANGELOG.md CONTRIBUTING.md "dist/$dir/"
+          cp -R docs scripts "dist/$dir/"
+          tar -C dist -czf "dist/$dir.tar.gz" "$dir"
+          sha256sum "dist/$dir.tar.gz" > "dist/$dir.tar.gz.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/faultsimdisk-$version.tar.gz" \
+            "dist/faultsimdisk-$version.tar.gz.sha256" \
+            --title "Fault Simulation Disk $GITHUB_REF_NAME" \
+            --generate-notes

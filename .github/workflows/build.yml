@@ -1,4 +1,4 @@
-name: Build
+name: CI
 
 on:
   push:
@@ -8,23 +8,28 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   kernel-module:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential linux-headers-generic kmod shellcheck
+          sudo apt-get install -y build-essential linux-headers-generic kmod shellcheck dkms
 
-      - name: Lint scripts
-        run: shellcheck scripts/dev.sh scripts/smoke-test.sh scripts/fault-test.sh scripts/stats-test.sh scripts/fio-test.sh scripts/sqlite-test.sh scripts/postgres-test.sh scripts/final-validate.sh
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
 
       - name: Build module
         shell: bash
@@ -32,4 +37,28 @@ jobs:
           kdir=$(find /usr/src -maxdepth 1 -type d -name 'linux-headers-*-generic' | sort -V | tail -n 1)
           test -n "$kdir"
           make KDIR="$kdir"
-          modinfo ./faultsimdisk.ko
+          modinfo ./faultsimdisk.ko | tee modinfo.txt
+          echo "kernel_headers=$(basename "$kdir")" >> modinfo.txt
+
+      - name: Validate DKMS build
+        shell: bash
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          kdir=$(find /usr/src -maxdepth 1 -type d -name 'linux-headers-*-generic' | sort -V | tail -n 1)
+          kernelver=${kdir##*/linux-headers-}
+          src="/usr/src/faultsimdisk-$version"
+          sudo install -d "$src"
+          sudo install -m 0644 faultsimdisk.c Makefile dkms.conf VERSION "$src/"
+          sudo dkms add -m faultsimdisk -v "$version"
+          sudo dkms build -m faultsimdisk -v "$version" -k "$kernelver"
+          sudo dkms remove -m faultsimdisk -v "$version" --all
+
+      - name: Upload CI build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: faultsimdisk-ci-module
+          path: |
+            faultsimdisk.ko
+            modinfo.txt
+          if-no-files-found: error
+          retention-days: 14
