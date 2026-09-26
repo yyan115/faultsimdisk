@@ -1,26 +1,56 @@
 # Reproducibility and evidence
 
-Fault Simulation Disk separates functional claims from environment-specific performance observations.
+Fault Simulation Disk separates reproducible functional claims from environment-specific performance observations.
 
-## Reproducible claims
+## What is reproducible
 
-The validation suite checks properties that should hold across machines:
+The hosted validation checks properties that should hold across machines:
 
-- configured fixed latency delays I/O by at least the requested interval within scheduler tolerance;
+- a configured fixed latency materially delays I/O by the requested interval within scheduler tolerance;
 - 100% read/write failure policies reject the corresponding I/O;
 - ext4 formats, mounts, writes, syncs, and reads back through `/dev/faultsim0`;
-- database tests compare baseline behavior with injected faults instead of requiring one absolute throughput result.
+- SQLite and PostgreSQL surface injected lower-level write failures;
+- database and `fio` tests compare baseline behavior with injected faults rather than requiring one absolute throughput number.
 
-Absolute baseline IOPS are not portable performance claims because CPU, virtualization, kernel, and host load affect them.
+Absolute baseline IOPS are not treated as portable performance claims because CPU, virtualization, kernel, and host load affect them.
 
-## Independent execution
+## Independent hosted execution
 
-GitHub Actions includes a runtime integration job on a fresh GitHub-hosted Ubuntu VM. It builds the module against the runner kernel, loads it, runs the filesystem smoke test, and uploads environment metadata tied to the commit SHA.
+The `Runtime Integration` GitHub Actions workflow runs on a fresh GitHub-hosted Ubuntu VM. It:
 
-Local Multipass runs remain useful for Linux 7.0 compatibility testing, but they are development evidence rather than the primary trust mechanism.
+1. captures the commit, runner image, kernel, architecture, compiler, and test-tool versions;
+2. builds the module against the runner's own kernel;
+3. loads `/dev/faultsim0`;
+4. runs the full ext4, fault injection, statistics, `fio`, SQLite, and PostgreSQL validation suite;
+5. renders structured JSON, Markdown, HTML, and SVG results;
+6. uploads the raw output and hashes as a workflow artifact;
+7. publishes the latest verified report to the `validation-results` branch.
 
-## Provenance
+The README embeds the generated SVG card from that branch, so the repository front page reflects the latest successful hosted validation without bot commits to `main`.
 
-When the repository is public, GitHub artifact attestations can cryptographically bind release and validation artifacts to the repository, workflow, triggering event, and commit that produced them.
+## Evidence integrity
 
-Attestation proves provenance and integrity, not semantic correctness. The workflow and test scripts remain reviewable source code so reviewers can inspect what was actually executed.
+Each hosted run packages the raw environment, full validation output, hashes, and generated report into `runtime-evidence.tar.gz`. Public runs create a GitHub artifact attestation for that archive using Sigstore.
+
+To verify a downloaded evidence archive:
+
+```bash
+gh attestation verify runtime-evidence.tar.gz -R yyan115/faultsimdisk
+```
+
+The attestation cryptographically binds the artifact digest to the repository, workflow identity, triggering event, and commit SHA. It establishes provenance and integrity; it does not prove that the test logic itself is correct. The workflow and validation scripts remain public and reviewable for that reason.
+
+## Release snapshots
+
+Tagged releases rerun the hosted validation from the tagged commit. The GitHub Release includes:
+
+- source archive and SHA-256 checksum;
+- the exact validation Markdown and JSON;
+- raw runtime evidence and hashes;
+- attestations for both the source archive and runtime evidence.
+
+This gives each version a frozen validation record, while the `validation-results` branch always represents the latest successful hosted run.
+
+## Local testing
+
+Local Multipass runs remain useful for development and compatibility checks, especially against specific Linux versions. They are supplementary evidence rather than the primary trust mechanism.
