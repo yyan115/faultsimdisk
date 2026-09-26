@@ -1,6 +1,6 @@
 # Fault Simulation Disk
 
-[![CI](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml)
+[![CI](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml) [![Runtime Integration](https://github.com/yyan115/faultsimdisk/actions/workflows/runtime.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/runtime.yml)
 
 A Linux kernel block-device simulator for reproducible storage fault testing.
 
@@ -55,11 +55,13 @@ make
 
 Configuration lives under `/sys/module/faultsimdisk/parameters/`; statistics are exposed through `/sys/kernel/debug/faultsimdisk/stats`.
 
-## Validation snapshot
+## Validation
 
-On Ubuntu 26.04 with Linux 7.0.0-34, a 4 KiB QD1 random-read test measured **518k IOPS baseline vs 47.5 IOPS with 20 ms injected latency**. A SQLite full-synchronous transaction increased from **6 ms to 262 ms** with 50 ms storage latency, and a 100% write-failure policy surfaced as a SQLite disk I/O error. The validation suite also includes a disposable PostgreSQL cluster with `fsync` and synchronous commit enabled.
+The primary validation runs on a fresh GitHub-hosted Ubuntu VM and checks behavior rather than requiring one machine-specific performance number. The workflow builds and loads the kernel module, exercises ext4, latency and error injection, runtime statistics, `fio`, SQLite, and a disposable PostgreSQL cluster with `fsync` and synchronous commit enabled. It uploads the runner environment and full test output as CI artifacts tied to the tested commit.
 
-See [design notes](docs/design.md), [validation scenarios](docs/validation.md), and [contributing guidelines](CONTRIBUTING.md) for details.
+Local Linux 7.0 results are retained in the detailed validation notes as compatibility evidence, not as portable performance claims.
+
+See [design notes](docs/design.md), [validation scenarios](docs/validation.md), [reproducibility and evidence](docs/reproducibility.md), and [contributing guidelines](CONTRIBUTING.md) for details.
 
 ## Installation
 
