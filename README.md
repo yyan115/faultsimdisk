@@ -23,19 +23,20 @@ The controls can be changed while the device is running, so a workload can start
 The applications are real. **The disk underneath them is the part being simulated.**
 
 ```text
-fio / SQLite / PostgreSQL
-           ↓
-          ext4
-           ↓
-    Linux block layer
-           ↓
-     /dev/faultsim0
-           ↓
-      FaultSimDisk
-     ┌─────┼───────────┐
-     ↓     ↓           ↓
-  latency  read I/O   write I/O
-  delay    errors     errors
+SQLite / PostgreSQL          fio / raw I/O
+        ↓                          ↓
+       ext4                        │
+        └──────────┬───────────────┘
+                   ↓
+          Linux block layer
+                   ↓
+            /dev/faultsim0
+                   ↓
+            FaultSimDisk
+          ┌────────┼────────┐
+          ↓        ↓        ↓
+       latency   read I/O  write I/O
+       delay     errors    errors
 ```
 
 This lets the validation answer concrete questions:
@@ -54,7 +55,7 @@ This lets the validation answer concrete questions:
 
 [Generated report](https://github.com/yyan115/faultsimdisk/tree/validation-results) · [Machine-readable JSON](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.json) · [Raw validation output](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/raw/validation-output.txt) · [Reproducibility model](docs/reproducibility.md)
 
-The hosted suite exercises all three fault controls against raw block I/O and then runs `fio`, SQLite, and PostgreSQL above ext4 on `/dev/faultsim0`. PostgreSQL is configured with `fsync=on` and `synchronous_commit=on` so the test observes real durable-write behavior.
+The hosted suite exercises all three fault controls. `fio` and the raw checks access `/dev/faultsim0` directly; SQLite and PostgreSQL run on ext4 backed by the device. PostgreSQL uses `fsync=on` and `synchronous_commit=on` so the test observes real durable-write behavior.
 
 ## Run it
 

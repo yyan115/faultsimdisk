@@ -91,6 +91,26 @@ def compact_failure(value, limit=82):
     return value[: limit - 1].rstrip() + "…"
 
 
+def sqlite_failure_lines(value):
+    value = value or ""
+    if "disk I/O error (10)" in value:
+        return ["disk I/O error (10)"]
+    return [compact_failure(value, 26)]
+
+
+def postgres_failure_lines(value):
+    value = value or ""
+    lines = []
+    severity = value.split(":", 1)[0].strip() if ":" in value else ""
+    if "fdatasync" in value:
+        lines.append(f"{severity + ': ' if severity else ''}fdatasync failed")
+    if "Input/output error" in value:
+        lines.append("Input/output error")
+    if not lines:
+        lines.append(compact_failure(value, 28))
+    return lines[:2]
+
+
 def markdown_report(data):
     env = data["environment"]
     m = data["metrics"]
@@ -166,6 +186,18 @@ def svg_card(x, y, width, height, title, fault, observed, status="PASS", mono=Fa
     return "\n".join(nodes)
 
 
+def svg_error_card(x, y, width, title, fault, lines, status="PASS"):
+    nodes = [
+        f'<rect x="{x}" y="{y}" width="{width}" height="108" rx="10" fill="#161b22" stroke="#30363d"/>',
+        svg_text(x + 18, y + 28, title, 15, 700, "#f0f6fc"),
+        svg_text(x + width - 62, y + 28, status, 12, 700, "#3fb950" if status == "PASS" else "#f85149"),
+        svg_text(x + 18, y + 53, fault, 12, 600, "#8b949e"),
+    ]
+    for i, line in enumerate(lines[:2]):
+        nodes.append(svg_mono(x + 18, y + 77 + i * 19, line, 12, 500, "#c9d1d9"))
+    return "\n".join(nodes)
+
+
 def svg_report(data):
     env = data["environment"]
     m = data["metrics"]
@@ -189,10 +221,10 @@ def svg_report(data):
         svg_card(492, 334, 220, 98, "SQLite", f"+{fmt_num(m['sqlite_injected_latency_ms'])} ms", f"{fmt_num(m['sqlite_baseline_ms'])} → {fmt_num(m['sqlite_injected_ms'])} ms"),
         svg_card(724, 334, 248, 98, "PostgreSQL", f"+{fmt_num(m['postgres_injected_latency_ms'])} ms", f"{fmt_num(m['postgres_baseline_ms'])} → {fmt_num(m['postgres_injected_ms'])} ms"),
         svg_text(28, 466, "3  I/O ERROR PROPAGATION", 13, 700, "#58a6ff"),
-        svg_card(28, 482, 220, 98, "Raw read", "100% READ FAIL", "read rejected with I/O error", pass_text(m["raw_read_failure_pass"])),
-        svg_card(260, 482, 220, 98, "Raw write", "100% WRITE FAIL", "write rejected with I/O error", pass_text(m["raw_write_failure_pass"])),
-        svg_card(492, 482, 220, 98, "SQLite", "100% WRITE FAIL", compact_failure(m.get("sqlite_failure"), 40), pass_text(m["sqlite_failure_pass"]), True),
-        svg_card(724, 482, 248, 98, "PostgreSQL", "100% WRITE FAIL", compact_failure(m.get("postgres_failure"), 43), pass_text(m["postgres_failure_pass"]), True),
+        svg_error_card(28, 482, 220, "Raw read", "100% READ FAIL", ["read rejected", "I/O error"], pass_text(m["raw_read_failure_pass"])),
+        svg_error_card(260, 482, 220, "Raw write", "100% WRITE FAIL", ["write rejected", "I/O error"], pass_text(m["raw_write_failure_pass"])),
+        svg_error_card(492, 482, 220, "SQLite", "100% WRITE FAIL", sqlite_failure_lines(m.get("sqlite_failure")), pass_text(m["sqlite_failure_pass"])),
+        svg_error_card(724, 482, 248, "PostgreSQL", "100% WRITE FAIL", postgres_failure_lines(m.get("postgres_failure")), pass_text(m["postgres_failure_pass"])),
         svg_text(28, 616, "Generated from raw GitHub-hosted validation output — not manually copied benchmark data.", 12, 400, "#8b949e"),
         "</svg>",
     ]
