@@ -77,7 +77,7 @@ mount "$DEVICE" "$MOUNT_DIR"
 mounted=1
 
 install -d -o postgres -g postgres "$PGDATA"
-chown postgres:postgres "$SOCKET_DIR"
+chown postgres:postgres "$SOCKET_DIR" "$LOG_FILE"
 
 runuser -u postgres -- "$INITDB" -D "$PGDATA" --auth=trust --no-locale --encoding=UTF8 >/dev/null
 
