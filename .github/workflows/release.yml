@@ -38,6 +38,7 @@ jobs:
           else
             read -r requested target < RELEASE
             test "$requested" = "$tag"
+            git fetch --no-tags origin "$target"
             git rev-parse "$target^{commit}" >/dev/null
           fi
 
