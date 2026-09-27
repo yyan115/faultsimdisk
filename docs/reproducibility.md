@@ -54,3 +54,7 @@ This gives each version a frozen validation record, while the `validation-result
 ## Local testing
 
 Local VM runs remain useful for development and compatibility checks against specific Linux versions. They are supplementary evidence rather than the primary trust mechanism.
+
+## Persistence boundary
+
+The simulator is RAM-backed. The SQLite and PostgreSQL scenarios exercise their synchronous filesystem and WAL-flush paths and verify block-layer latency/error propagation. They do not claim persistence across a host power loss or reboot.

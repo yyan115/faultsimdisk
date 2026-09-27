@@ -43,7 +43,7 @@ This lets the validation answer concrete questions:
 
 - Can a normal filesystem format, mount, write, sync, and read back through the simulated disk?
 - Are DISCARD and WRITE_ZEROES actually advertised to Linux and handled by the device?
-- Does injected block latency actually propagate into raw I/O, `fio`, SQLite transactions, and durable PostgreSQL commits?
+- Does injected block latency actually propagate into raw I/O, `fio`, SQLite transactions, and synchronous PostgreSQL commits?
 - Does a forced read failure reach userspace as a real I/O failure?
 - Does a forced write failure propagate through ext4 into SQLite and PostgreSQL instead of being hidden?
 - Does the kernel module correctly account for requests, bytes, failures, and delayed I/O?
@@ -56,7 +56,7 @@ This lets the validation answer concrete questions:
 
 [Generated report](https://github.com/yyan115/faultsimdisk/tree/validation-results) · [Machine-readable JSON](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.json) · [Raw validation output](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/raw/validation-output.txt) · [Reproducibility model](docs/reproducibility.md)
 
-The hosted suite exercises all three fault controls. `fio` and the raw checks access `/dev/faultsim0` directly; SQLite and PostgreSQL run on ext4 backed by the device. PostgreSQL uses `fsync=on` and `synchronous_commit=on` so the test observes real durable-write behavior.
+The hosted suite exercises all three fault controls. `fio` and the raw checks access `/dev/faultsim0` directly; SQLite and PostgreSQL run on ext4 backed by the device. PostgreSQL uses `fsync=on` and `synchronous_commit=on` so the test exercises its synchronous WAL-flush path. Because Fault Simulation Disk is RAM-backed, this is not a power-loss persistence test.
 
 ## Run it
 

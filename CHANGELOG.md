@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-No unreleased changes.
+### Fixed
+
+- Made published validation and source-archive checksum manifests usable from their distributed layouts.
+- Clarified that database validation exercises synchronous durability code paths and error propagation, not power-loss persistence of the RAM-backed device.
 
 ## 1.0.2 - 2026-09-27
 

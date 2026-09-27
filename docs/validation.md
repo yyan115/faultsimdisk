@@ -24,7 +24,7 @@ The suite performs:
 4. **Statistics test**: confirms request, byte, failure, and delayed-I/O counters increase.
 5. **fio benchmark**: compares 4 KiB single-depth random reads at baseline and with 20 ms injected latency.
 6. **SQLite scenario**: runs full-synchronous transactions on ext4 backed by Fault Simulation Disk, measures injected latency, then confirms a 100% write-failure policy surfaces as an application error.
-7. **PostgreSQL scenario**: initializes a disposable PostgreSQL cluster directly on Fault Simulation Disk with `fsync=on` and `synchronous_commit=on`, measures durable commit latency, then injects block write failure and records the server/client-visible error.
+7. **PostgreSQL scenario**: initializes a disposable PostgreSQL cluster directly on Fault Simulation Disk with `fsync=on` and `synchronous_commit=on`, measures synchronous commit latency, then injects block write failure and records the server/client-visible error.
 
 The suite resets fault settings after each scenario.
 
@@ -32,7 +32,7 @@ The suite resets fault settings after each scenario.
 
 SQLite and PostgreSQL both depend on the filesystem and block device beneath their database files. When Fault Simulation Disk completes writes with I/O errors, those failures propagate through the Linux storage stack to the database, allowing application-visible behavior to be tested without failing physical storage.
 
-PostgreSQL is tested with durability settings enabled so commits wait for WAL flushes rather than using non-durable shortcuts.
+PostgreSQL is tested with its durability settings enabled so commits wait for WAL flushes rather than using asynchronous shortcuts. The RAM-backed simulator verifies that synchronization path and its error propagation, not persistence across host power loss.
 
 ## Recorded local compatibility run
 

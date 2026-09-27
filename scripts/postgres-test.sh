@@ -115,14 +115,14 @@ printf '50\n' > "$PARAMS/latency_ms"
 delayed_ms=$(time_txn_ms delayed)
 printf '0\n' > "$PARAMS/latency_ms"
 
-printf 'PostgreSQL baseline durable transaction: %d ms\n' "$baseline_ms"
+printf 'PostgreSQL baseline synchronous commit: %d ms\n' "$baseline_ms"
 printf 'PostgreSQL transaction with 50 ms I/O latency: %d ms\n' "$delayed_ms"
 
 if (( delayed_ms <= baseline_ms + 40 )); then
 	echo "FAIL: PostgreSQL transaction did not show expected latency increase" >&2
 	exit 1
 fi
-echo "PASS: PostgreSQL durable commit slowed under injected storage latency"
+echo "PASS: PostgreSQL synchronous commit slowed under injected storage latency"
 
 printf '100\n' > "$PARAMS/write_fail_pct"
 set +e

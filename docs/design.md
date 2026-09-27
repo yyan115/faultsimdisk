@@ -71,7 +71,9 @@ The repository validates the driver at multiple layers:
 - debugfs checks verify request, byte, failure, and delayed-I/O accounting;
 - `fio` compares single-depth random-read throughput with and without injected latency;
 - SQLite runs on ext4 backed by `/dev/faultsim0`, validating transaction slowdown and application-visible I/O failure;
-- PostgreSQL runs a disposable cluster with `fsync=on` and `synchronous_commit=on`, validating durable-commit latency and WAL write-failure propagation;
+- PostgreSQL runs a disposable cluster with `fsync=on` and `synchronous_commit=on`, validating synchronous-commit latency and WAL write-failure propagation;
 - GitHub-hosted runtime integration rebuilds and loads the module on a fresh runner and publishes the exact environment, raw output, structured results, hashes, and attested evidence.
 
 Absolute performance numbers are environment-specific. The validation focuses on reproducible fault behavior and relative response to configured injection.
+
+Fault Simulation Disk models block-layer completion semantics and injected failures, not persistence across host power loss; its backing store is volatile RAM.
