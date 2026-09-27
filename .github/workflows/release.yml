@@ -152,10 +152,9 @@ jobs:
             echo
             echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for the version history."
           } > release-notes.md
-          if git rev-parse "$tag" >/dev/null 2>&1; then
-            tag_args=(--verify-tag)
-          else
-            tag_args=(--target "${{ steps.release.outputs.target }}")
+          if ! git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            git tag "$tag" "${{ steps.release.outputs.target }}"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$tag"
           fi
 
           gh release create "$tag" \
@@ -165,6 +164,6 @@ jobs:
             evidence.sha256 \
             verification/latest.json \
             verification/latest.md \
-            "${tag_args[@]}" \
+            --verify-tag \
             --title "Fault Simulation Disk $tag" \
             --notes-file release-notes.md
