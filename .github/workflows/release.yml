@@ -2,10 +2,6 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - RELEASE
     tags:
       - "v*"
 
@@ -31,13 +27,7 @@ jobs:
         run: |
           version=$(tr -d '[:space:]' < VERSION)
           tag="v$version"
-
-          if test "$GITHUB_REF_TYPE" = "tag"; then
-            test "$GITHUB_REF_NAME" = "$tag"
-          else
-            requested=$(tr -d '[:space:]' < RELEASE)
-            test "$requested" = "$tag"
-          fi
+          test "$GITHUB_REF_NAME" = "$tag"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -142,13 +132,6 @@ jobs:
             echo
             echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for the version history."
           } > release-notes.md
-          create_args=()
-          if git rev-parse "$tag" >/dev/null 2>&1; then
-            create_args+=(--verify-tag)
-          else
-            create_args+=(--target "$GITHUB_SHA")
-          fi
-
           gh release create "$tag" \
             "dist/faultsimdisk-$version.tar.gz" \
             "dist/faultsimdisk-$version.tar.gz.sha256" \
@@ -156,6 +139,6 @@ jobs:
             evidence.sha256 \
             verification/latest.json \
             verification/latest.md \
-            "${create_args[@]}" \
+            --verify-tag \
             --title "Fault Simulation Disk $tag" \
             --notes-file release-notes.md
