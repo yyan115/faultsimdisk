@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No unreleased changes.
+
+## 1.0.2 - 2026-09-27
+
 ### Fixed
 
 - Advertise DISCARD and WRITE_ZEROES queue capabilities so the implemented handlers are reachable through normal block-device operations.
