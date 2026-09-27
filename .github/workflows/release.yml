@@ -106,7 +106,10 @@ jobs:
           cp faultsimdisk.c Makefile dkms.conf VERSION LICENSE README.md CHANGELOG.md CONTRIBUTING.md "dist/$dir/"
           cp -R docs scripts "dist/$dir/"
           tar -C dist -czf "dist/$dir.tar.gz" "$dir"
-          sha256sum "dist/$dir.tar.gz" > "dist/$dir.tar.gz.sha256"
+          (
+            cd dist
+            sha256sum "$dir.tar.gz" > "$dir.tar.gz.sha256"
+          )
 
       - name: Attest release evidence
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4

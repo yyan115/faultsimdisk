@@ -92,7 +92,15 @@ jobs:
             site/latest.json \
             site/latest.md \
             site/latest.svg | tee evidence.sha256
-          cp evidence.sha256 site/raw/
+          (
+            cd site
+            sha256sum \
+              latest.json \
+              latest.md \
+              latest.svg \
+              raw/runtime-environment.txt \
+              raw/validation-output.txt > raw/evidence.sha256
+          )
           tar -czf runtime-evidence.tar.gz \
             runtime-environment.txt \
             validation-output.txt \
