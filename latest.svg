@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="650" viewBox="0 0 1000 650">
+<rect width="1000" height="650" rx="14" fill="#0d1117"/>
+<rect x=".5" y=".5" width="999" height="649" rx="13.5" fill="none" stroke="#30363d"/>
+<text x="28" y="42" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#8b949e">TEST RESULTS</text>
+<text x="28" y="75" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="27" font-weight="700" fill="#f0f6fc">Fault Simulation Disk</text>
+<text x="28" y="102" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="400" fill="#8b949e">Storage latency and I/O errors tested with ext4, fio, SQLite and PostgreSQL.</text>
+<text x="897" y="75" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="700" fill="#3fb950">PASS</text>
+<text x="28" y="135" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="400" fill="#8b949e">Linux 7.0.0-1012-azure  •  commit 15698484db48  •  Actions #36301623952</text>
+<text x="28" y="174" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#58a6ff">1  NORMAL BLOCK DEVICE</text>
+<rect x="28" y="190" width="460" height="94" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="46" y="218" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">ext4 filesystem</text>
+<text x="426" y="218" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="46" y="243" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">NO FAULT</text>
+<text x="46" y="269" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="#c9d1d9">format → mount → write → sync → read back</text>
+<rect x="500" y="190" width="472" height="94" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="518" y="218" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">DISCARD / WRITE_ZEROES</text>
+<text x="910" y="218" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="518" y="243" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">QUEUE-ADVERTISED</text>
+<text x="518" y="269" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="#c9d1d9">both test ranges read back as zero</text>
+<text x="28" y="318" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#58a6ff">2  LATENCY PROPAGATION</text>
+<rect x="28" y="334" width="220" height="98" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="46" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">Raw read</text>
+<text x="186" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="46" y="387" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">+100 ms</text>
+<text x="46" y="413" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="#c9d1d9">112 ms observed</text>
+<rect x="260" y="334" width="220" height="98" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="278" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">fio</text>
+<text x="418" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="278" y="387" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">+20 ms</text>
+<text x="278" y="413" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="#c9d1d9">472,151.9 → 47.5 IOPS</text>
+<rect x="492" y="334" width="220" height="98" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="510" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">SQLite</text>
+<text x="650" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="510" y="387" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">+50 ms</text>
+<text x="510" y="413" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="#c9d1d9">4 → 260 ms</text>
+<rect x="724" y="334" width="248" height="98" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="742" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">PostgreSQL</text>
+<text x="910" y="362" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="742" y="387" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">+50 ms</text>
+<text x="742" y="413" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="#c9d1d9">8 → 59 ms</text>
+<text x="28" y="466" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#58a6ff">3  I/O ERROR PROPAGATION</text>
+<rect x="28" y="482" width="220" height="108" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="46" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">Raw read</text>
+<text x="186" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="46" y="535" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">100% READ FAIL</text>
+<text x="46" y="559" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">userspace observed</text>
+<text x="46" y="578" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">Input/output error</text>
+<rect x="260" y="482" width="220" height="108" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="278" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">Raw write</text>
+<text x="418" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="278" y="535" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">100% WRITE FAIL</text>
+<text x="278" y="559" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">userspace observed</text>
+<text x="278" y="578" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">Input/output error</text>
+<rect x="492" y="482" width="220" height="108" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="510" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">SQLite</text>
+<text x="650" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="510" y="535" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">100% WRITE FAIL</text>
+<text x="510" y="559" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">disk I/O error (10)</text>
+<rect x="724" y="482" width="248" height="108" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="742" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#f0f6fc">PostgreSQL</text>
+<text x="910" y="510" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3fb950">PASS</text>
+<text x="742" y="535" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">100% WRITE FAIL</text>
+<text x="742" y="559" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">PANIC: fdatasync failed</text>
+<text x="742" y="578" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500" fill="#c9d1d9">Input/output error</text>
+<text x="28" y="616" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#8b949e">Generated by GitHub Actions. See the report for raw output and environment details.</text>
+</svg>

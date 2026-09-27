@@ -1,0 +1,41 @@
+PASS: formatted, mounted, wrote, synced, and read back through /dev/faultsim0
+PASS: block queue advertises discard and write-zeroes support
+PASS: discard zeroed the requested range
+PASS: write-zeroes zeroed the requested range
+PASS: 100 ms configured latency produced 112 ms raw-read latency
+Raw write observed injected failure: dd: IO error: Input/output error
+PASS: write_fail_pct=100 rejected a raw write
+Raw read observed injected failure: dd: IO error: Input/output error
+PASS: read_fail_pct=100 rejected a raw read
+PASS: latency and failure injection checks completed
+PASS: read request and byte counters increased
+PASS: write request and byte counters increased
+PASS: failed write counter increased
+PASS: delayed request counter increased
+PASS: runtime statistics checks completed
+fio baseline randread IOPS: 472151.9
+fio with 20 ms injected latency: 47.5 IOPS
+PASS: fio measured the expected performance impact from injected latency
+SQLite baseline transaction: 4 ms
+SQLite transaction with 50 ms I/O latency: 260 ms
+PASS: SQLite transaction slowed under injected storage latency
+SQLite observed injected storage failure: Error: stepping, disk I/O error (10)
+PASS: SQLite surfaced the injected block-device write failure
+PostgreSQL baseline synchronous commit: 8 ms
+PostgreSQL transaction with 50 ms I/O latency: 59 ms
+PASS: PostgreSQL synchronous commit slowed under injected storage latency
+PostgreSQL observed injected storage failure: PANIC:  could not fdatasync file "000000010000000000000001": Input/output error
+PASS: PostgreSQL surfaced the injected block-device write failure
+
+PASS: Fault Simulation Disk final validation completed
+
+read_requests 945188
+write_requests 1489
+read_bytes 3873479680
+write_bytes 43913216
+failed_reads 1
+failed_writes 9
+delayed_requests 110
+latency_ms 0
+read_fail_pct 0
+write_fail_pct 0
