@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export LC_ALL=C
+# shellcheck source=scripts/database-test-common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/database-test-common.sh"
+
 DEVICE=/dev/faultsim0
 PARAMS=/sys/module/faultsimdisk/parameters
 MOUNT_DIR=$(mktemp -d /tmp/faultsimdisk-sqlite.XXXXXX)
@@ -56,11 +60,7 @@ SQL
 
 time_txn_ms() {
 	local value="$1"
-	local start_ns end_ns
-	start_ns=$(date +%s%N)
-	sqlite3 "$DB" "PRAGMA synchronous=FULL; BEGIN IMMEDIATE; INSERT INTO events(value) VALUES('$value'); COMMIT;" >/dev/null
-	end_ns=$(date +%s%N)
-	echo $(( (end_ns - start_ns) / 1000000 ))
+	time_command_ms sqlite3 "$DB" "PRAGMA synchronous=FULL; BEGIN IMMEDIATE; INSERT INTO events(value) VALUES('$value'); COMMIT;"
 }
 
 baseline_ms=$(time_txn_ms baseline_txn)
@@ -85,10 +85,6 @@ failure_rc=$?
 set -e
 printf '0\n' > "$PARAMS/write_fail_pct"
 
-if (( failure_rc == 0 )); then
-	echo "FAIL: SQLite transaction succeeded with write_fail_pct=100" >&2
-	exit 1
-fi
-
-printf 'SQLite observed injected storage failure: %s\n' "$(printf '%s\n' "$failure_output" | head -n 1)"
+failure_line=$(sqlite_failure_line "$failure_rc" "$failure_output")
+printf 'SQLite observed injected storage failure: %s\n' "$failure_line"
 echo "PASS: SQLite surfaced the injected block-device write failure"

@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Propagate failed database commands out of latency measurements and require storage I/O errors in failure tests.
+- Reject PostgreSQL timeouts and check new server log entries when a storage failure disconnects the client.
+- Correct the README's manual example to reload the device before changing its controls.
 - Made published validation and source-archive checksum manifests usable from their distributed layouts.
 - Clarified that database validation exercises synchronous durability code paths and error propagation, not power-loss persistence of the RAM-backed device.
 
@@ -20,7 +23,7 @@
 - Capture the actual userspace errors from deterministic raw read/write failure injection.
 - Suppress SQLite setup noise from raw validation evidence.
 - Rework the README and generated live report around fault propagation and automatically sourced evidence.
-- Restrict privileged runtime integration to trusted `main` pushes and manual dispatches; pull requests continue to use read-only build and DKMS CI.
+- Restrict privileged runtime integration to trusted `main` pushes and manual dispatches. Pull requests continue to use read-only build and DKMS CI.
 - Restore the release workflow to tag-only publication after the initial automated release bootstrap.
 - Clarify DKMS installation prerequisites.
 

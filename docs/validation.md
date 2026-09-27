@@ -28,6 +28,14 @@ The suite performs:
 
 The suite resets fault settings after each scenario.
 
+Database latency measurements must complete successfully. Failure checks require a storage I/O error. A timeout or an unrelated command failure fails the test. If PostgreSQL disconnects the client, the test checks server log entries written during injection for the I/O error.
+
+The database check helpers have regression tests that run without loading the module or accessing a block device:
+
+```bash
+python3 -B -m unittest discover -s tests -v
+```
+
 ## Application-level failure propagation
 
 SQLite and PostgreSQL both depend on the filesystem and block device beneath their database files. When Fault Simulation Disk completes writes with I/O errors, those failures propagate through the Linux storage stack to the database, allowing application-visible behavior to be tested without failing physical storage.

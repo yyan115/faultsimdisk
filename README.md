@@ -2,65 +2,37 @@
 
 [![CI](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/build.yml) [![Runtime Integration](https://github.com/yyan115/faultsimdisk/actions/workflows/runtime.yml/badge.svg)](https://github.com/yyan115/faultsimdisk/actions/workflows/runtime.yml)
 
-**Make a Linux block device deliberately slow or unreliable, then observe how real filesystems and databases react.**
+A Linux kernel module for testing how software handles slow or failing storage.
 
-Fault Simulation Disk is a Linux kernel module that exposes `/dev/faultsim0` as a normal block device. Instead of damaging hardware or waiting for a real disk to fail, you can inject controlled storage faults at runtime and test the software above it.
+Fault Simulation Disk creates a RAM-backed block device at `/dev/faultsim0`. You can format it, mount it, and run applications on it, then add latency or make reads and writes fail while those applications are running. The tests use ext4, fio, SQLite and PostgreSQL to check how the faults reach user space.
 
-## What can it simulate?
+## Fault controls
 
-There are exactly three runtime fault controls:
-
-| Control | Range | What it does |
+| Parameter | Range | Effect |
 | --- | ---: | --- |
-| `latency_ms` | 0–5000 ms | Delays completion of every block I/O request |
-| `read_fail_pct` | 0–100% | Completes the configured percentage of reads with an I/O error |
-| `write_fail_pct` | 0–100% | Completes the configured percentage of writes with an I/O error |
+| `latency_ms` | 0 to 5000 ms | Adds a delay to each I/O handled by the driver. |
+| `read_fail_pct` | 0 to 100% | Chance of returning an I/O error for each read. |
+| `write_fail_pct` | 0 to 100% | Chance of returning an I/O error for each write. |
 
-The controls can be changed while the device is running, so a workload can start normally and then experience a slow or failing disk without restarting the application.
+All three can be changed at runtime through `/sys/module/faultsimdisk/parameters/`. Request counts, transferred bytes, failures and delayed I/O are available in `/sys/kernel/debug/faultsimdisk/stats`.
 
-## What is being tested?
+## Test results
 
-The applications are real. **The disk underneath them is the part being simulated.**
+GitHub Actions builds the module and runs the integration tests on a hosted Ubuntu VM. The card below shows the latest successful run. The report links to its source commit, environment and raw output.
 
-```text
-SQLite / PostgreSQL          fio / raw I/O
-        ↓                          ↓
-       ext4                        │
-        └──────────┬───────────────┘
-                   ↓
-          Linux block layer
-                   ↓
-            /dev/faultsim0
-                   ↓
-            FaultSimDisk
-          ┌────────┼────────┐
-          ↓        ↓        ↓
-       latency   read I/O  write I/O
-       delay     errors    errors
-```
+[![Fault Simulation Disk test results](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.svg)](https://github.com/yyan115/faultsimdisk/tree/validation-results)
 
-This lets the validation answer concrete questions:
+[Report](https://github.com/yyan115/faultsimdisk/tree/validation-results) · [JSON](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.json) · [Raw output](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/raw/validation-output.txt) · [Evidence and verification](docs/reproducibility.md)
 
-- Can a normal filesystem format, mount, write, sync, and read back through the simulated disk?
-- Are DISCARD and WRITE_ZEROES actually advertised to Linux and handled by the device?
-- Does injected block latency actually propagate into raw I/O, `fio`, SQLite transactions, and synchronous PostgreSQL commits?
-- Does a forced read failure reach userspace as a real I/O failure?
-- Does a forced write failure propagate through ext4 into SQLite and PostgreSQL instead of being hidden?
-- Does the kernel module correctly account for requests, bytes, failures, and delayed I/O?
+The suite checks filesystem operations, DISCARD and WRITE_ZEROES, latency, forced I/O errors and runtime counters. It also measures fio throughput and database transaction times with faults enabled. SQLite uses `synchronous=FULL`. PostgreSQL uses `fsync=on` and `synchronous_commit=on`.
 
-## Live hosted demonstration
+The device loses its contents when the module is unloaded or the machine restarts. The database tests exercise synchronization and error handling, not persistence through a power loss.
 
-**The card below is not hand-written benchmark data.** GitHub Actions builds and loads the kernel module on a fresh hosted VM, runs the complete validation suite, parses the raw output, and regenerates this card automatically.
+## Build and run
 
-[![Live Fault Simulation Disk validation](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.svg)](https://github.com/yyan115/faultsimdisk/tree/validation-results)
+Use a disposable Linux VM. The integration tests format `/dev/faultsim0` and overwrite its contents.
 
-[Generated report](https://github.com/yyan115/faultsimdisk/tree/validation-results) · [Machine-readable JSON](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/latest.json) · [Raw validation output](https://raw.githubusercontent.com/yyan115/faultsimdisk/validation-results/raw/validation-output.txt) · [Reproducibility model](docs/reproducibility.md)
-
-The hosted suite exercises all three fault controls. `fio` and the raw checks access `/dev/faultsim0` directly; SQLite and PostgreSQL run on ext4 backed by the device. PostgreSQL uses `fsync=on` and `synchronous_commit=on` so the test exercises its synchronous WAL-flush path. Because Fault Simulation Disk is RAM-backed, this is not a power-loss persistence test.
-
-## Run it
-
-Use a disposable Linux VM.
+On Ubuntu:
 
 ```bash
 sudo apt install build-essential "linux-headers-$(uname -r)" kmod e2fsprogs fio sqlite3 python3 postgresql postgresql-client util-linux
@@ -71,9 +43,10 @@ make
 ./scripts/dev.sh unload
 ```
 
-To inject faults manually:
+To try the controls yourself, load the device again:
 
 ```bash
+./scripts/dev.sh load 256
 ./scripts/dev.sh set latency_ms 100
 ./scripts/dev.sh set read_fail_pct 5
 ./scripts/dev.sh set write_fail_pct 10
@@ -82,26 +55,25 @@ To inject faults manually:
 ./scripts/dev.sh stats
 ```
 
-Configuration lives under `/sys/module/faultsimdisk/parameters/`. Runtime counters are exposed through `/sys/kernel/debug/faultsimdisk/stats`.
+Set a control to `0` to disable it. When finished, unmount any filesystem on the device and run `./scripts/dev.sh unload`.
 
 ## Implementation
 
-- Registers a functional Linux block device that can be formatted and mounted with ext4.
-- Uses an in-memory backing store so experiments are disposable.
-- Completes delayed I/O asynchronously through a dedicated workqueue rather than sleeping in `submit_bio`.
-- Injects independent probabilistic read and write errors as `BLK_STS_IOERR`.
-- Handles FLUSH and advertises DISCARD and WRITE_ZEROES through the block queue; discarded/zeroed ranges read back as zero.
-- Tracks read/write requests, transferred bytes, failures, and delayed requests through atomic counters.
-- Includes kernel API compatibility around the `blk_alloc_disk()` change after Linux 6.8.
-- Includes DKMS packaging, hosted runtime validation, raw evidence, hashes, and GitHub artifact attestations.
+The driver handles BIOs in [`faultsimdisk.c`](faultsimdisk.c). Reads and writes copy data to and from the backing memory under a spinlock. Delayed I/O runs on a workqueue, and failed requests complete with `BLK_STS_IOERR`. On unload, the driver drains pending work before releasing the backing memory.
 
-## DKMS installation
+DISCARD and WRITE_ZEROES clear the requested ranges. The device has no separate write cache to flush. A compatibility branch handles the `blk_alloc_disk()` API change between Linux 6.8 and 6.9.
 
-For persistent installation across kernel updates:
+The [design notes](docs/design.md) cover the I/O path and lifetime management. The [validation guide](docs/validation.md) describes each test.
+
+## DKMS
+
+DKMS can rebuild the module when the kernel is updated:
 
 ```bash
 sudo apt install dkms build-essential "linux-headers-$(uname -r)" util-linux
 sudo ./scripts/install-dkms.sh
 ```
 
-See [design notes](docs/design.md), [validation scenarios](docs/validation.md), [reproducibility and evidence](docs/reproducibility.md), and [contributing guidelines](CONTRIBUTING.md) for details.
+To remove that version, run `sudo ./scripts/uninstall-dkms.sh` from the same checkout.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history. Licensed under [GPL-2.0](LICENSE).

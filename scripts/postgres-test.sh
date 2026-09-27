@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export LC_ALL=C
+# shellcheck source=scripts/database-test-common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/database-test-common.sh"
+
 DEVICE=/dev/faultsim0
 PARAMS=/sys/module/faultsimdisk/parameters
 MOUNT_DIR=$(mktemp -d /tmp/faultsimdisk-postgres.XXXXXX)
@@ -100,13 +104,7 @@ psql_cmd=("$PSQL" -h "$SOCKET_DIR" -p "$PORT" -U postgres -d postgres -v ON_ERRO
 
 time_txn_ms() {
 	local value="$1"
-	local start_ns end_ns
-
-	start_ns=$(date +%s%N)
-	"${psql_cmd[@]}" -c "SET synchronous_commit=on; INSERT INTO events(value) VALUES('$value');" >/dev/null
-	end_ns=$(date +%s%N)
-
-	echo $(( (end_ns - start_ns) / 1000000 ))
+	time_command_ms "${psql_cmd[@]}" -c "SET synchronous_commit=on; INSERT INTO events(value) VALUES('$value');"
 }
 
 baseline_ms=$(time_txn_ms baseline)
@@ -124,6 +122,7 @@ if (( delayed_ms <= baseline_ms + 40 )); then
 fi
 echo "PASS: PostgreSQL synchronous commit slowed under injected storage latency"
 
+log_offset=$(stat -c %s "$LOG_FILE")
 printf '100\n' > "$PARAMS/write_fail_pct"
 set +e
 failure_output=$(timeout 10s "${psql_cmd[@]}" -c "SET synchronous_commit=on; INSERT INTO events(value) VALUES('must_fail');" 2>&1)
@@ -131,14 +130,7 @@ failure_rc=$?
 set -e
 printf '0\n' > "$PARAMS/write_fail_pct"
 
-if (( failure_rc == 0 )); then
-	echo "FAIL: PostgreSQL transaction succeeded with write_fail_pct=100" >&2
-	exit 1
-fi
-
-failure_line=$(printf '%s\n' "$failure_output" | grep -E -m1 'ERROR|FATAL|PANIC|server closed|connection' || true)
-if test -z "$failure_line"; then
-	failure_line=$(printf '%s\n' "$failure_output" | head -n 1)
-fi
+failure_log=$(tail -c "+$(( log_offset + 1 ))" "$LOG_FILE")
+failure_line=$(postgres_failure_line "$failure_rc" "$failure_output" "$failure_log")
 printf 'PostgreSQL observed injected storage failure: %s\n' "$failure_line"
 echo "PASS: PostgreSQL surfaced the injected block-device write failure"

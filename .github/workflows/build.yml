@@ -35,6 +35,9 @@ jobs:
           shellcheck scripts/*.sh
           python3 -m py_compile scripts/render-results.py
 
+      - name: Test database validation checks
+        run: python3 -B -m unittest discover -s tests -v
+
       - name: Build module
         shell: bash
         run: |
