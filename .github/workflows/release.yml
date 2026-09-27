@@ -34,28 +34,19 @@ jobs:
 
           if test "$GITHUB_REF_TYPE" = "tag"; then
             test "$GITHUB_REF_NAME" = "$tag"
-            target="$GITHUB_SHA"
           else
-            read -r requested target < RELEASE
+            requested=$(tr -d '[:space:]' < RELEASE)
             test "$requested" = "$tag"
-            git fetch --no-tags origin "$target"
-            git rev-parse "$target^{commit}" >/dev/null
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "target=$target" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout release target
-        if: github.ref_type != 'tag'
-        shell: bash
-        run: git checkout --detach "${{ steps.release.outputs.target }}"
 
       - name: Capture release environment
         shell: bash
         run: |
           {
-            echo "commit=$(git rev-parse HEAD)"
+            echo "commit=$GITHUB_SHA"
             echo "runner_os=$RUNNER_OS"
             echo "image_os=${ImageOS:-unknown}"
             echo "image_version=${ImageVersion:-unknown}"
@@ -94,7 +85,6 @@ jobs:
       - name: Render release verification report
         shell: bash
         run: |
-          GITHUB_SHA="${{ steps.release.outputs.target }}" \
           python3 scripts/render-results.py \
             --environment runtime-environment.txt \
             --validation validation-output.txt \
@@ -152,9 +142,11 @@ jobs:
             echo
             echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for the version history."
           } > release-notes.md
-          if ! git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
-            git tag "$tag" "${{ steps.release.outputs.target }}"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$tag"
+          create_args=()
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            create_args+=(--verify-tag)
+          else
+            create_args+=(--target "$GITHUB_SHA")
           fi
 
           gh release create "$tag" \
@@ -164,6 +156,6 @@ jobs:
             evidence.sha256 \
             verification/latest.json \
             verification/latest.md \
-            --verify-tag \
+            "${create_args[@]}" \
             --title "Fault Simulation Disk $tag" \
             --notes-file release-notes.md
