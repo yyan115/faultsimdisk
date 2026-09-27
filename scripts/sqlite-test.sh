@@ -30,6 +30,12 @@ fi
 
 command -v sqlite3 >/dev/null || { echo "Missing sqlite3. Install: sudo apt install sqlite3" >&2; exit 1; }
 test -b "$DEVICE" || { echo "$DEVICE is not a block device." >&2; exit 1; }
+test -d /sys/module/faultsimdisk || { echo "faultsimdisk is not loaded." >&2; exit 1; }
+test -d /sys/block/faultsim0 || { echo "Refusing unexpected device." >&2; exit 1; }
+test "$(lsblk -dn -o KNAME "$DEVICE" 2>/dev/null || true)" = "faultsim0" || {
+	echo "Refusing unexpected device node: $DEVICE" >&2
+	exit 1
+}
 
 if findmnt -rn -S "$DEVICE" >/dev/null; then
 	echo "$DEVICE is already mounted." >&2
@@ -41,7 +47,7 @@ mkfs.ext4 -q -F "$DEVICE"
 mount "$DEVICE" "$MOUNT_DIR"
 mounted=1
 
-sqlite3 "$DB" <<'SQL'
+sqlite3 "$DB" >/dev/null <<'SQL'
 PRAGMA journal_mode=DELETE;
 PRAGMA synchronous=FULL;
 CREATE TABLE events(id INTEGER PRIMARY KEY, value TEXT NOT NULL);

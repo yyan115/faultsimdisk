@@ -98,27 +98,38 @@ case "${1:-}" in
 		;;
 	smoke)
 		require_vm
+		require_loaded
 		sudo "$ROOT/scripts/smoke-test.sh"
 		;;
 	fault-test)
 		require_vm
+		require_loaded
 		sudo "$ROOT/scripts/fault-test.sh"
 		;;
 	stats-test)
 		require_vm
+		require_loaded
 		sudo "$ROOT/scripts/stats-test.sh"
 		;;
 	fio-test)
 		require_vm
+		require_loaded
 		sudo "$ROOT/scripts/fio-test.sh"
 		;;
 	sqlite-test)
 		require_vm
+		require_loaded
 		sudo "$ROOT/scripts/sqlite-test.sh"
 		;;
 	postgres-test)
 		require_vm
+		require_loaded
 		sudo "$ROOT/scripts/postgres-test.sh"
+		;;
+	block-ops-test)
+		require_vm
+		require_loaded
+		sudo "$ROOT/scripts/block-ops-test.sh"
 		;;
 	validate)
 		require_vm
@@ -126,7 +137,7 @@ case "${1:-}" in
 		"$ROOT/scripts/final-validate.sh"
 		;;
 	*)
-		echo "Usage: $0 {load [size_mb]|unload|status|config|set|stats|logs|smoke|fault-test|stats-test|fio-test|sqlite-test|postgres-test|validate}" >&2
+		echo "Usage: $0 {load [size_mb]|unload|status|config|set|stats|logs|smoke|block-ops-test|fault-test|stats-test|fio-test|sqlite-test|postgres-test|validate}" >&2
 		exit 2
 		;;
 esac

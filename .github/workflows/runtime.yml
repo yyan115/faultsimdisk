@@ -52,7 +52,7 @@ jobs:
           if ! test -e "/lib/modules/$(uname -r)/build"; then
             sudo apt-get install -y "linux-headers-$(uname -r)"
           fi
-          sudo apt-get install -y fio sqlite3 python3 e2fsprogs postgresql postgresql-client
+          sudo apt-get install -y fio sqlite3 python3 e2fsprogs postgresql postgresql-client util-linux
           {
             echo "fio_version=$(fio --version)"
             echo "sqlite_version=$(sqlite3 --version | awk '{print $1}')"

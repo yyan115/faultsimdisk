@@ -7,7 +7,7 @@ cd "$ROOT"
 for cmd in fio sqlite3 python3 mkfs.ext4 pg_config; do
 	command -v "$cmd" >/dev/null || {
 		echo "Missing dependency: $cmd" >&2
-		echo "Install with: sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client" >&2
+		echo "Install with: sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client util-linux" >&2
 		exit 1
 	}
 done

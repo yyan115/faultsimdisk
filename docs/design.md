@@ -56,7 +56,7 @@ Configuration remains in module parameters under sysfs, while diagnostic statist
 
 ### Backing store
 
-A spinlock protects concurrent access to the in-memory backing store. Read and write BIO segments are copied while the relevant backing range is locked. Discard and write-zeroes operations clear the requested range in page-sized chunks so a large request does not keep interrupts disabled for the full range. Flush completes immediately because there is no volatile hardware cache.
+A spinlock protects concurrent access to the in-memory backing store. Read and write BIO segments are copied while the relevant backing range is locked. Discard and write-zeroes operations clear the requested range in page-sized chunks so a large request does not keep interrupts disabled for the full range. The queue explicitly advertises both capabilities to the block layer; Linux 6.8 uses the legacy queue-limit setters, while Linux 6.9+ supplies them through the initial `queue_limits`. Flush completes immediately because there is no volatile hardware cache.
 
 ## Compatibility
 
@@ -67,6 +67,7 @@ A small compatibility branch handles the `blk_alloc_disk()` API change introduce
 The repository validates the driver at multiple layers:
 
 - raw block I/O verifies deterministic latency and read/write failure injection;
+- block-operation checks verify DISCARD and WRITE_ZEROES are advertised and zero the requested ranges;
 - debugfs checks verify request, byte, failure, and delayed-I/O accounting;
 - `fio` compares single-depth random-read throughput with and without injected latency;
 - SQLite runs on ext4 backed by `/dev/faultsim0`, validating transaction slowdown and application-visible I/O failure;

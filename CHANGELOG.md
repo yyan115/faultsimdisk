@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- Advertise DISCARD and WRITE_ZEROES queue capabilities so the implemented handlers are reachable through normal block-device operations.
+- Harden validation scripts against an unexpected `/dev/faultsim0` device node.
+
 ### Changed
 
+- Validate DISCARD and WRITE_ZEROES behavior in the hosted runtime suite.
+- Capture the actual userspace errors from deterministic raw read/write failure injection.
+- Suppress SQLite setup noise from raw validation evidence.
+- Rework the README and generated live report around fault propagation and automatically sourced evidence.
 - Restrict privileged runtime integration to trusted `main` pushes and manual dispatches; pull requests continue to use read-only build and DKMS CI.
 - Restore the release workflow to tag-only publication after the initial automated release bootstrap.
 - Clarify DKMS installation prerequisites.

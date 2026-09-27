@@ -42,6 +42,7 @@ SQLite / PostgreSQL          fio / raw I/O
 This lets the validation answer concrete questions:
 
 - Can a normal filesystem format, mount, write, sync, and read back through the simulated disk?
+- Are DISCARD and WRITE_ZEROES actually advertised to Linux and handled by the device?
 - Does injected block latency actually propagate into raw I/O, `fio`, SQLite transactions, and durable PostgreSQL commits?
 - Does a forced read failure reach userspace as a real I/O failure?
 - Does a forced write failure propagate through ext4 into SQLite and PostgreSQL instead of being hidden?
@@ -62,7 +63,7 @@ The hosted suite exercises all three fault controls. `fio` and the raw checks ac
 Use a disposable Linux VM.
 
 ```bash
-sudo apt install build-essential "linux-headers-$(uname -r)" kmod e2fsprogs fio sqlite3 python3 postgresql postgresql-client
+sudo apt install build-essential "linux-headers-$(uname -r)" kmod e2fsprogs fio sqlite3 python3 postgresql postgresql-client util-linux
 
 make
 ./scripts/dev.sh load 256
@@ -89,7 +90,7 @@ Configuration lives under `/sys/module/faultsimdisk/parameters/`. Runtime counte
 - Uses an in-memory backing store so experiments are disposable.
 - Completes delayed I/O asynchronously through a dedicated workqueue rather than sleeping in `submit_bio`.
 - Injects independent probabilistic read and write errors as `BLK_STS_IOERR`.
-- Supports FLUSH, DISCARD, and WRITE_ZEROES semantics appropriate for the in-memory device.
+- Handles FLUSH and advertises DISCARD and WRITE_ZEROES through the block queue; discarded/zeroed ranges read back as zero.
 - Tracks read/write requests, transferred bytes, failures, and delayed requests through atomic counters.
 - Includes kernel API compatibility around the `blk_alloc_disk()` change after Linux 6.8.
 - Includes DKMS packaging, hosted runtime validation, raw evidence, hashes, and GitHub artifact attestations.
@@ -99,7 +100,7 @@ Configuration lives under `/sys/module/faultsimdisk/parameters/`. Runtime counte
 For persistent installation across kernel updates:
 
 ```bash
-sudo apt install dkms build-essential "linux-headers-$(uname -r)"
+sudo apt install dkms build-essential "linux-headers-$(uname -r)" util-linux
 sudo ./scripts/install-dkms.sh
 ```
 

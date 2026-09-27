@@ -377,18 +377,30 @@ static const struct block_device_operations fsd_fops = {
 static struct gendisk *fsd_alloc_disk(void)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	unsigned int max_zero_sectors =
+		(unsigned int)(fsd.capacity_bytes >> SECTOR_SHIFT);
 	struct queue_limits limits = {
 		.logical_block_size = FSD_SECTOR_SIZE,
 		.physical_block_size = FSD_SECTOR_SIZE,
+		.max_hw_discard_sectors = max_zero_sectors,
+		.max_discard_segments = 1,
+		.discard_granularity = FSD_SECTOR_SIZE,
+		.max_write_zeroes_sectors = max_zero_sectors,
 	};
 
 	return blk_alloc_disk(&limits, NUMA_NO_NODE);
 #else
+	unsigned int max_zero_sectors =
+		(unsigned int)(fsd.capacity_bytes >> SECTOR_SHIFT);
 	struct gendisk *disk = blk_alloc_disk(NUMA_NO_NODE);
 
 	if (disk) {
 		blk_queue_logical_block_size(disk->queue, FSD_SECTOR_SIZE);
 		blk_queue_physical_block_size(disk->queue, FSD_SECTOR_SIZE);
+		blk_queue_max_discard_sectors(disk->queue, max_zero_sectors);
+		blk_queue_max_discard_segments(disk->queue, 1);
+		blk_queue_max_write_zeroes_sectors(disk->queue, max_zero_sectors);
+		disk->queue->limits.discard_granularity = FSD_SECTOR_SIZE;
 	}
 
 	return disk;

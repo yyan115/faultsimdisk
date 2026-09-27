@@ -11,7 +11,7 @@ Each hosted run records the exact commit, runner image, kernel, architecture, co
 ## Full local validation
 
 ```bash
-sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client
+sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client util-linux
 ./scripts/dev.sh load 256
 ./scripts/dev.sh validate
 ```
@@ -19,11 +19,12 @@ sudo apt install fio sqlite3 python3 e2fsprogs postgresql postgresql-client
 The suite performs:
 
 1. **Filesystem smoke test**: creates ext4 on Fault Simulation Disk, mounts it, writes and reads a file.
-2. **Fault injection test**: verifies configured 100 ms latency and deterministic 100% read/write failures.
-3. **Statistics test**: confirms request, byte, failure, and delayed-I/O counters increase.
-4. **fio benchmark**: compares 4 KiB single-depth random reads at baseline and with 20 ms injected latency.
-5. **SQLite scenario**: runs full-synchronous transactions on ext4 backed by Fault Simulation Disk, measures injected latency, then confirms a 100% write-failure policy surfaces as an application error.
-6. **PostgreSQL scenario**: initializes a disposable PostgreSQL cluster directly on Fault Simulation Disk with `fsync=on` and `synchronous_commit=on`, measures durable commit latency, then injects block write failure and records the server/client-visible error.
+2. **Block-operation test**: verifies Linux sees non-zero DISCARD and WRITE_ZEROES limits, executes both operations, and confirms the affected ranges read back as zero.
+3. **Fault injection test**: verifies configured 100 ms latency and deterministic 100% read/write failures, capturing the userspace I/O errors.
+4. **Statistics test**: confirms request, byte, failure, and delayed-I/O counters increase.
+5. **fio benchmark**: compares 4 KiB single-depth random reads at baseline and with 20 ms injected latency.
+6. **SQLite scenario**: runs full-synchronous transactions on ext4 backed by Fault Simulation Disk, measures injected latency, then confirms a 100% write-failure policy surfaces as an application error.
+7. **PostgreSQL scenario**: initializes a disposable PostgreSQL cluster directly on Fault Simulation Disk with `fsync=on` and `synchronous_commit=on`, measures durable commit latency, then injects block write failure and records the server/client-visible error.
 
 The suite resets fault settings after each scenario.
 

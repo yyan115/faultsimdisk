@@ -49,6 +49,12 @@ for cmd in pg_config runuser timeout; do
 done
 
 test -b "$DEVICE" || { echo "$DEVICE is not a block device." >&2; exit 1; }
+test -d /sys/module/faultsimdisk || { echo "faultsimdisk is not loaded." >&2; exit 1; }
+test -d /sys/block/faultsim0 || { echo "Refusing unexpected device." >&2; exit 1; }
+test "$(lsblk -dn -o KNAME "$DEVICE" 2>/dev/null || true)" = "faultsim0" || {
+	echo "Refusing unexpected device node: $DEVICE" >&2
+	exit 1
+}
 
 if findmnt -rn -S "$DEVICE" >/dev/null; then
 	echo "$DEVICE is already mounted." >&2

@@ -18,7 +18,12 @@ if (( EUID != 0 )); then
 fi
 
 test -b "$DEVICE" || { echo "$DEVICE is not a block device." >&2; exit 1; }
+test -d /sys/module/faultsimdisk || { echo "faultsimdisk is not loaded." >&2; exit 1; }
 test -d /sys/block/faultsim0 || { echo "Refusing unexpected device." >&2; exit 1; }
+test "$(lsblk -dn -o KNAME "$DEVICE" 2>/dev/null || true)" = "faultsim0" || {
+	echo "Refusing unexpected device node: $DEVICE" >&2
+	exit 1
+}
 
 mkfs.ext4 -q -F "$DEVICE"
 mount "$DEVICE" "$MOUNT_DIR"
