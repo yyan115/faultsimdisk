@@ -2,6 +2,10 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - RELEASE
     tags:
       - "v*"
 
@@ -27,16 +31,30 @@ jobs:
         run: |
           version=$(tr -d '[:space:]' < VERSION)
           tag="v$version"
-          test "$GITHUB_REF_NAME" = "$tag"
+
+          if test "$GITHUB_REF_TYPE" = "tag"; then
+            test "$GITHUB_REF_NAME" = "$tag"
+            target="$GITHUB_SHA"
+          else
+            read -r requested target < RELEASE
+            test "$requested" = "$tag"
+            git rev-parse "$target^{commit}" >/dev/null
+          fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release target
+        if: github.ref_type != 'tag'
+        shell: bash
+        run: git checkout --detach "${{ steps.release.outputs.target }}"
 
       - name: Capture release environment
         shell: bash
         run: |
           {
-            echo "commit=$GITHUB_SHA"
+            echo "commit=$(git rev-parse HEAD)"
             echo "runner_os=$RUNNER_OS"
             echo "image_os=${ImageOS:-unknown}"
             echo "image_version=${ImageVersion:-unknown}"
@@ -75,6 +93,7 @@ jobs:
       - name: Render release verification report
         shell: bash
         run: |
+          GITHUB_SHA="${{ steps.release.outputs.target }}" \
           python3 scripts/render-results.py \
             --environment runtime-environment.txt \
             --validation validation-output.txt \
@@ -132,6 +151,12 @@ jobs:
             echo
             echo "See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for the version history."
           } > release-notes.md
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tag_args=(--verify-tag)
+          else
+            tag_args=(--target "${{ steps.release.outputs.target }}")
+          fi
+
           gh release create "$tag" \
             "dist/faultsimdisk-$version.tar.gz" \
             "dist/faultsimdisk-$version.tar.gz.sha256" \
@@ -139,6 +164,6 @@ jobs:
             evidence.sha256 \
             verification/latest.json \
             verification/latest.md \
-            --verify-tag \
+            "${tag_args[@]}" \
             --title "Fault Simulation Disk $tag" \
             --notes-file release-notes.md
